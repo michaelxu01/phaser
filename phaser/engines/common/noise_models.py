@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from phaser.hooks.solver import NoiseModel
 from phaser.plan import AmplitudeNoisePlan, AnscombeNoisePlan
 from phaser.utils.num import get_array_module
-from .simulation import SimulationState
+from phaser.state import ReconsState
 
 
 class AmplitudeNoiseModel(NoiseModel[None]):
@@ -23,7 +23,7 @@ class AmplitudeNoiseModel(NoiseModel[None]):
 
         self.eps: float = props.eps
 
-    def init_state(self, sim: SimulationState) -> None:
+    def init_state(self, sim: ReconsState) -> None:
         return None
 
     def calc_loss(

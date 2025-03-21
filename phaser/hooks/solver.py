@@ -4,20 +4,21 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.types import Dataclass
-from . import Hook, FlagArgs
+from phaser.types import Dataclass, ReconsVar
+from . import Hook
 
 StateT = t.TypeVar('StateT')
 
 if t.TYPE_CHECKING:
     from phaser.engines.common.simulation import SimulationState
     from phaser.execute import Observer
-    from phaser.plan import ConventionalEnginePlan
+    from phaser.plan import ConventionalEnginePlan, GradientEnginePlan
+    from phaser.state import ReconsState
 
 
 class HasState(abc.ABC, t.Generic[StateT]):
     @abc.abstractmethod
-    def init_state(self, sim: 'SimulationState') -> StateT:
+    def init_state(self, sim: 'ReconsState') -> StateT:
         ...
 
 
@@ -185,4 +186,36 @@ class ConventionalSolver(abc.ABC):
 
 
 class ConventionalSolverHook(Hook['ConventionalEnginePlan', ConventionalSolver]):
+    known = {}
+
+
+class GradientSolver(abc.ABC, t.Generic[StateT]):
+    @classmethod
+    @abc.abstractmethod
+    def name(cls) -> str:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def params(self) -> t.AbstractSet[ReconsVar]:
+        ...
+
+    @abc.abstractmethod
+    def init_state(self, sim: 'ReconsState', xp: t.Any) -> StateT:
+        ...
+
+    def run_group(
+        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any],
+        iter: int, loss: float,
+    ) -> t.Tuple['ReconsState', StateT]:
+        return (sim, state)
+
+    def run_iter(
+        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any],
+        iter: int, loss: float,
+    ) -> t.Tuple['ReconsState', StateT]:
+        return (sim, state)
+
+
+class GradientSolverHook(Hook['GradientEnginePlan', GradientSolver]):
     known = {}

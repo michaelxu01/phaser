@@ -1,6 +1,5 @@
 from functools import partial
 import logging
-from pathlib import Path
 import typing as t
 
 import numpy
@@ -125,7 +124,7 @@ def lsqml_dry_run(
     probe_mag: NDArray[numpy.floating]
 ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating]]:
     xp = cast_array_module(sim.xp)
-    (psi, group_obj, group_scan) = cutout_group(sim, group)
+    (psi, group_obj, group_scan) = cutout_group(sim.ky, sim.kx, sim.state, group)
 
     obj_mag += xp.sum(abs2(xp.prod(group_obj, axis=1)), axis=0)
     obj_grid = sim.state.object.sampling
@@ -181,7 +180,7 @@ def lsqml_run(
 
     eps = 1e-16
 
-    (probes, group_obj, group_scan, subpx_filters) = cutout_group(sim, group, return_filters=True)
+    (probes, group_obj, group_scan, subpx_filters) = cutout_group(sim.ky, sim.kx, sim.state, group, return_filters=True)
     psi = xp.zeros((n_slices, *probes.shape), dtype=probes.dtype)
     psi = at(psi, 0).set(probes)
 
@@ -356,7 +355,7 @@ def epie_dry_run(
     group: NDArray[numpy.integer],
 ) -> NDArray[numpy.floating]:
     xp = cast_array_module(sim.xp)
-    (psi, group_obj, group_scan) = cutout_group(sim, group)
+    (psi, group_obj, group_scan) = cutout_group(sim.ky, sim.kx, sim.state, group)
 
     def run_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
@@ -389,7 +388,7 @@ def epie_run(
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
 
-    (probes, group_obj, group_scan, subpx_filters) = cutout_group(sim, group, return_filters=True)
+    (probes, group_obj, group_scan, subpx_filters) = cutout_group(sim.ky, sim.kx, sim.state, group, return_filters=True)
     psi = xp.zeros((n_slices, *probes.shape), dtype=probes.dtype)
     psi = at(psi, 0).set(probes)
 

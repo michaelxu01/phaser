@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups
 from phaser.utils.num import cast_array_module, to_numpy, to_complex_dtype
+from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.hooks import EngineArgs
 from phaser.hooks.solver import ConstraintRegularizer
@@ -82,98 +83,81 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     sim = solver.init(sim)
 
-    try:
-        out_dir = props.save_options.out_dir.format(
-            # TODO: more EnginePlan keys here
-            engine_i=engine_i, name=recons_name,
-            group=grouping, niter=props.niter,
-            solver=solver.name(),
-            noise_model=noise_model.name(),
-        )
-        out_dir = Path(out_dir).expanduser().absolute()
-    except KeyError as e:
-        raise ValueError(f"Invalid format string in 'out_dir' (unknown key {e})") from None
-    except Exception as e:
-        raise ValueError("Invalid format string in 'out_dir'") from e
-
     any_output = flag_any_true(save, props.niter) or flag_any_true(save_images, props.niter)
-    if any_output:
-        try:
-            out_dir.mkdir(exist_ok=True)
-        except Exception as e:
-            e.add_note(f"Unable to create output dir '{out_dir}'")
-            raise
-    # delete finished file if it exists
-    (out_dir / 'finished').unlink(missing_ok=True)
 
-    if props.compact:
-        groups = create_compact_groupings(sim.state.scan, grouping)
-    else:
-        groups = create_sparse_groupings(sim.state.scan, grouping)
+    with OutputDir(
+        props.save_options.out_dir, any_output,
+        engine_i=engine_i, name=recons_name,
+        group=grouping, niter=props.niter,
+        solver=solver.name(),
+        noise_model=noise_model.name(),
+    ) as out_dir:
 
-    calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
+        if props.compact:
+            groups = create_compact_groupings(sim.state.scan, grouping)
+        else:
+            groups = create_sparse_groupings(sim.state.scan, grouping)
 
-    position_solver = None if props.position_solver is None else props.position_solver(None)
-    position_solver_state = None if position_solver is None else position_solver.init_state(sim)
+        calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
 
-    propagators = make_propagators(sim)
+        position_solver = None if props.position_solver is None else props.position_solver(None)
+        position_solver_state = None if position_solver is None else position_solver.init_state(sim)
 
-    observer.init_solver(sim.state, engine_i)
+        propagators = make_propagators(sim.state)
 
-    # runs rescaling
-    sim = solver.presolve(sim, propagators, groups)
+        observer.init_solver(sim.state, engine_i)
 
-    observer.start_solver()
+        # runs rescaling
+        sim = solver.presolve(sim, propagators, groups)
 
-    for i in range(1, props.niter+1):
-        iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
+        observer.start_solver()
 
-        sim, pos_update, group_errors = solver.run_iteration(
-            sim, propagators, groups,
-            update_object=update_object({'state': sim.state, 'niter': props.niter}),
-            update_probe=update_probe({'state': sim.state, 'niter': props.niter}),
-            update_positions=iter_update_positions,
-            calc_error=calc_error({'state': sim.state, 'niter': props.niter}),
-            calc_error_mask=calc_error_mask,
-            observer=observer,
-        )
-        assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
-        assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+        for i in range(1, props.niter+1):
+            iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
 
-        sim = apply_regularizers_iter(sim)
+            sim, pos_update, group_errors = solver.run_iteration(
+                sim, propagators, groups,
+                update_object=update_object({'state': sim.state, 'niter': props.niter}),
+                update_probe=update_probe({'state': sim.state, 'niter': props.niter}),
+                update_positions=iter_update_positions,
+                calc_error=calc_error({'state': sim.state, 'niter': props.niter}),
+                calc_error_mask=calc_error_mask,
+                observer=observer,
+            )
+            assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+            assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-        if iter_update_positions:
-            if not position_solver:
-                raise ValueError("Updating positions with no PositionSolver specified")
+            sim = apply_regularizers_iter(sim)
 
-            # subtract mean position update
-            pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
-            pos_update, position_solver_state = position_solver.perform_update(sim.state.scan, pos_update, position_solver_state)
-            # subtract mean again (this can change with momentum)
-            pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
-            update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
-            logger.info(f"Position update: mean {xp.mean(update_mag)}")
-            sim.state.scan += pos_update
-            assert sim.state.scan.dtype == sim.dtype
+            if iter_update_positions:
+                if not position_solver:
+                    raise ValueError("Updating positions with no PositionSolver specified")
 
-        error = None
-        if group_errors is not None:
-            error = float(to_numpy(xp.nanmean(xp.concatenate(group_errors))))
+                # subtract mean position update
+                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
+                pos_update, position_solver_state = position_solver.perform_update(sim.state.scan, pos_update, position_solver_state)
+                # subtract mean again (this can change with momentum)
+                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
+                update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
+                logger.info(f"Position update: mean {xp.mean(update_mag)}")
+                sim.state.scan += pos_update
+                assert sim.state.scan.dtype == sim.dtype
 
-            # TODO don't do this
-            sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
-            sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
+            error = None
+            if group_errors is not None:
+                error = float(to_numpy(xp.nanmean(xp.concatenate(group_errors))))
 
-        observer.update_iteration(sim.state, i, props.niter, error)
+                # TODO don't do this
+                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
+                sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
 
-        if save({'state': sim.state, 'niter': props.niter}):
-            output_state(sim.state, out_dir, props.save_options)
+            observer.update_iteration(sim.state, i, props.niter, error)
 
-        if save_images({'state': sim.state, 'niter': props.niter}):
-            output_images(sim.state, out_dir, props.save_options)
+            if save({'state': sim.state, 'niter': props.niter}):
+                output_state(sim.state, out_dir, props.save_options)
 
-    if any_output:
-        (out_dir / 'finished').touch(mode=0o664)
+            if save_images({'state': sim.state, 'niter': props.niter}):
+                output_images(sim.state, out_dir, props.save_options)
 
     observer.finish_solver()
     return sim.state

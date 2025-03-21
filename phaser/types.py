@@ -9,6 +9,7 @@ if t.TYPE_CHECKING:
 
 
 BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
+ReconsVar: t.TypeAlias = t.Literal['object', 'probe', 'scan']
 
 
 class Cancelled(BaseException):
