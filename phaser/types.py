@@ -21,7 +21,6 @@ class _ReconsVarsAnnotation(ConvertAnnotation):
 
 BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
 ReconsVar: t.TypeAlias = t.Literal['object', 'probe', 'scan']
-IterReconsVar: t.TypeAlias = t.Literal['scan']
 
 ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotation()]
 

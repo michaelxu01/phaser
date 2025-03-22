@@ -41,23 +41,21 @@ engines:
    niter: 500
    grouping: 128
 
-   noise_model:
-     type: 'anscombe'
-     eps: 0.8
+   noise_model: poisson
 
    solvers:
-     object, probe:
+     object:
        type: 'adam'
        learning_rate: 5.0e-4
-     #scan:
-     #  type: 'fixed'
-     #  learning_rate: 1.0e-5
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-3
 
    regularizers: []
-   #update_probe: {after: 5}
+   update_probe: {after: 3}
 
    save: {every: 10}
-   save_images: {every: 10}
+   save_images: {every: 2}
    save_options:
      images: [
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',

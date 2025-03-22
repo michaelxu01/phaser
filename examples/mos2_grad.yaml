@@ -24,7 +24,7 @@ init_scan:
   step_size: 0.6  # angstrom
 
 preprocessing:
- - type: scale
+ - type: poisson
    scale: 1.0e+6
 
 # for each reconstruction engine
@@ -38,21 +38,20 @@ engines:
    grouping: 256
 
    noise_model:
-     type: 'anscombe'
-     eps: 0.1
+     type: 'poisson'
 
    solvers:
-     object, probe:
-       type: 'fixed'
-       learning_rate: 1.0e-4
-     scan:
-       type: 'fixed'
-       learning_rate: 1.0e-5
+     object:
+       type: 'adam'
+       learning_rate: 1.0
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-3
 
    regularizers: []
 
    update_probe: {after: 5}
-   update_positions: {after: 30}
+   #update_positions: {after: 30}
 
    save: {every: 10}
    save_images: {every: 10}

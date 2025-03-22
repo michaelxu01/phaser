@@ -67,8 +67,13 @@ class AnscombeNoisePlan(AmplitudeNoisePlan, kw_only=True):
     offset: float = 0.375
 
 
+class PoissonNoisePlan(AmplitudeNoisePlan, kw_only=True):
+    offset: float = 1.0
+
+
 NoiseModelHook.known['amplitude'] = ('phaser.engines.common.noise_models:AmplitudeNoiseModel', AmplitudeNoisePlan)
 NoiseModelHook.known['anscombe'] = ('phaser.engines.common.noise_models:AnscombeNoiseModel', AnscombeNoisePlan)
+NoiseModelHook.known['poisson'] = ('phaser.engines.common.noise_models:PoissonNoiseModel', PoissonNoisePlan)
 
 
 class LSQMLSolverPlan(Dataclass, kw_only=True):
