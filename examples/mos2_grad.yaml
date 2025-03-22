@@ -51,8 +51,8 @@ engines:
 
    regularizers: []
 
-   #update_probe: {after: 1}
-   #update_positions: {after: 30}
+   update_probe: {after: 5}
+   update_positions: {after: 30}
 
    save: {every: 10}
    save_images: {every: 10}

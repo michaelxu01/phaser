@@ -17,9 +17,9 @@ from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.state import ReconsState
 from phaser.hooks import EngineArgs
-from phaser.hooks.solver import GradientSolver, GradientSolverHook
+from phaser.hooks.solver import GradientSolver
 from phaser.plan import GradientEnginePlan
-from phaser.types import process_flag, flag_any_true, ReconsVar, ReconsVars
+from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.output import output_images, output_state
 from ..common.simulation import cutout_group, make_propagators, slice_forwards
 
@@ -30,26 +30,24 @@ _PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'scan'})
 
 def process_solvers(
     plan: GradientEnginePlan
-) -> t.Tuple[t.FrozenSet[ReconsVar], t.Sequence[GradientSolver[t.Any]], t.FrozenSet[ReconsVar], t.Sequence[GradientSolver[t.Any]]]:
+) -> t.Tuple[t.FrozenSet[ReconsVar], t.Sequence[GradientSolver[t.Any]], t.Sequence[GradientSolver[t.Any]]]:
     # process solvers, and split into per-group and per-iter solvers
     solvers = plan.solvers
 
     seen = set()
     duplicate = set()
 
-    group_vars = set()
     group_solvers = []
-    iter_vars = set()
     iter_solvers = []
 
     for (vars, solver) in solvers.items():
         if len(vars) == 0:
             continue
 
-        duplicate.update(vars.intersection(seen))
+        duplicate |= vars & seen
+        seen |= vars
 
         if vars <= _PER_ITER_VARS:
-            iter_vars |= vars
             iter_solvers.append(solver({'plan': plan, 'params': vars}))
             continue
 
@@ -59,15 +57,13 @@ def process_solvers(
                              f"({', '.join(map(repr, vars & _PER_ITER_VARS))}) and per-group "
                              f"({', '.join(map(repr, vars - _PER_ITER_VARS))}) variables")
 
-        group_vars |= vars
         group_solvers.append(solver({'plan': plan, 'params': vars}))
 
     if len(duplicate):
         raise ValueError(f"Duplicate solvers for variable(s) {', '.join(map(repr, duplicate))}.")
 
     return (
-        frozenset(group_vars), tuple(group_solvers),
-        frozenset(iter_vars), tuple(iter_solvers)
+        frozenset(seen), tuple(group_solvers), tuple(iter_solvers)
     )
 
 
@@ -123,12 +119,14 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     noise_model = props.noise_model(None)
     noise_model_state = noise_model.init_state(state)
 
-    (group_vars, group_solvers, iter_vars, iter_solvers) = process_solvers(props)
-    all_vars = group_vars | iter_vars
+    (all_vars, group_solvers, iter_solvers) = process_solvers(props)
 
-    #update_probe = process_flag(props.update_probe)
-    #update_object = process_flag(props.update_object)
-    #update_positions = process_flag(props.update_positions)
+    flags = {
+        'probe': process_flag(props.update_probe),
+        'object': process_flag(props.update_object),
+        'scan': process_flag(props.update_positions),
+    }
+
     save = process_flag(props.save)
     save_images = process_flag(props.save_images)
 
@@ -158,12 +156,16 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         for i in range(1, props.niter+1):
             losses = []
 
+            iter_vars = all_vars & t.cast(t.Set[ReconsVar],
+                set(k for (k, flag) in flags.items() if flag({'state': state, 'niter': props.niter}))
+            )
+
             # gradients for per-iteration solvers
-            iter_grads = tree_zeros_like(select_vars(state, iter_vars))
+            iter_grads = tree_zeros_like(select_vars(state, iter_vars & _PER_ITER_VARS))
 
             for (group_i, group) in enumerate(groups):
                 (state, loss, iter_grads, group_solver_states) = run_group(
-                    state, group=group, vars=all_vars, iter_grads=iter_grads, props=propagators,
+                    state, group=group, vars=iter_vars, iter_grads=iter_grads, props=propagators,
                     group_solvers=group_solvers, group_solver_states=group_solver_states,
                     patterns=patterns, pattern_mask=pattern_mask,
                     noise_model=noise_model, noise_model_state=noise_model_state,
@@ -176,6 +178,9 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
             # update per-iteration solvers
             for (sol_i, solver) in enumerate(iter_solvers):
+                solver_grads = filter_vars(iter_grads, solver.params)
+                if len(solver_grads) == 0:
+                    continue
                 (update, iter_solver_states[sol_i]) = solver.update(
                     state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss
                 )
@@ -233,8 +238,11 @@ def run_group(
     iter_grads = jax.tree.map(lambda v1, v2: at(v1, tuple(group)).set(v2), iter_grads, filter_vars(grad, vars & _PER_ITER_VARS))
 
     for (sol_i, solver) in enumerate(group_solvers):
+        solver_grads = filter_vars(grad, solver.params)
+        if len(solver_grads) == 0:
+            continue
         (update, group_solver_states[sol_i]) = solver.update(
-            state, group_solver_states[sol_i], filter_vars(grad, solver.params), loss
+            state, group_solver_states[sol_i], solver_grads, loss
         )
         state = apply_update(state, update)
 
