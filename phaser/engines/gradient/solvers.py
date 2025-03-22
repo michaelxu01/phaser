@@ -33,8 +33,8 @@ class OptaxSolver(GradientSolver[t.Any]):
         return self.inner.init(select_vars(sim, self._params))
 
     def update(
-        self, sim: 'ReconsState', state: t.Any, grad: t.Dict[ReconsVar, t.Any], loss: float,
-    ) -> t.Tuple[t.Dict[ReconsVar, t.Any], t.Any]:
+        self, sim: 'ReconsState', state: t.Any, grad: t.Dict[ReconsVar, numpy.ndarray], loss: float,
+    ) -> t.Tuple[t.Dict[ReconsVar, numpy.ndarray], t.Any]:
         (updates, state) = self.inner.update(grad, state, params=select_vars(sim, self._params), value=loss, loss=loss)
         return (t.cast(t.Dict[ReconsVar, t.Any], updates), state)
 

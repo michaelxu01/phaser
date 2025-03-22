@@ -30,7 +30,7 @@ _PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'scan'})
 
 def process_solvers(
     plan: GradientEnginePlan
-) -> t.Tuple[t.FrozenSet[ReconsVar], t.Sequence[GradientSolver], t.FrozenSet[ReconsVar], t.Sequence[GradientSolver]]:
+) -> t.Tuple[t.FrozenSet[ReconsVar], t.Sequence[GradientSolver[t.Any]], t.FrozenSet[ReconsVar], t.Sequence[GradientSolver[t.Any]]]:
     # process solvers, and split into per-group and per-iter solvers
     solvers = plan.solvers
 
@@ -72,7 +72,7 @@ def process_solvers(
 
 
 def select_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar],
-                group: t.Optional[NDArray[numpy.integer]] = None) -> t.Dict[ReconsVar, t.Any]:
+                group: t.Optional[NDArray[numpy.integer]] = None) -> t.Dict[ReconsVar, numpy.ndarray]:
     # TODO more elegant way to do this?
     getters = {
         'probe': lambda sim: sim.probe.data,
@@ -82,7 +82,7 @@ def select_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar],
     return {var: getters[var](state) for var in vars}
 
 
-def apply_update(state: ReconsState, update: t.Dict[ReconsVar, t.Any]) -> ReconsState:
+def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -> ReconsState:
     if 'probe' in update:
         state.probe.data += update['probe']
     if 'object' in update:
@@ -158,8 +158,8 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         for i in range(1, props.niter+1):
             losses = []
 
+            # gradients for per-iteration solvers
             iter_grads = tree_zeros_like(select_vars(state, iter_vars))
-            d = {k: v.shape for (k, v) in iter_grads.items()}
 
             for (group_i, group) in enumerate(groups):
                 (state, loss, iter_grads, group_solver_states) = run_group(
@@ -174,6 +174,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
                 observer.update_group(state, props.send_every_group)
 
+            # update per-iteration solvers
             for (sol_i, solver) in enumerate(iter_solvers):
                 (update, iter_solver_states[sol_i]) = solver.update(
                     state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss

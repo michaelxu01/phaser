@@ -514,6 +514,15 @@ class Sampling:
     sampling: NDArray[numpy.float64]
     """Sample spacing (s_y, s_x)"""
 
+    def __eq__(self, other: t.Any) -> bool:
+        if type(self) != type(other):
+            return False
+        xp = get_array_module(self.sampling, other.sampling)
+        return (
+            xp.array_equal(self.shape, other.shape) and
+            xp.array_equal(self.extent, other.extent)
+        )
+
     @property
     def k_max(self) -> NDArray[numpy.float64]:
         """

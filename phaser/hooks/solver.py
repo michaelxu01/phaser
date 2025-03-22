@@ -205,8 +205,8 @@ class GradientSolver(abc.ABC, t.Generic[StateT]):
 
     @abc.abstractmethod
     def update(
-        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any], loss: float,
-    ) -> t.Tuple[t.Dict[ReconsVar, t.Any], StateT]:
+        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, numpy.ndarray], loss: float,
+    ) -> t.Tuple[t.Dict[ReconsVar, numpy.ndarray], StateT]:
         ...
 
 

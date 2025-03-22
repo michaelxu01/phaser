@@ -224,6 +224,16 @@ class ObjectSampling:
 
         object.__setattr__(self, 'corner', corner)
 
+    def __eq__(self, other: t.Any) -> bool:
+        if type(self) != type(other):
+            return False
+        xp = get_array_module(self.sampling, other.sampling)
+        return (
+            xp.array_equal(self.shape, other.shape) and
+            xp.array_equal(self.sampling, other.sampling) and
+            xp.array_equal(self.corner, other.corner)
+        )
+
     @classmethod
     def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> t.Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""

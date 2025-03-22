@@ -134,6 +134,14 @@ class ProgressState:
     def __hash__(self) -> int:
         return id(self)
 
+    def __eq__(self, other: t.Any) -> bool:
+        if type(self) != type(other):
+            return False
+        xp = get_array_module(self.iters, other.iters)
+        return (
+            xp.array_equal(self.iters, other.iters) and
+            xp.array_equal(self.detector_errors, other.detector_errors)
+        )
 
 @jax_dataclass(kw_only=True, static_fields=('progress',))
 class ReconsState:
