@@ -164,7 +164,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             iter_grads = tree_zeros_like(select_vars(state, iter_vars & _PER_ITER_VARS))
 
             for (group_i, group) in enumerate(groups):
-                (state, loss, iter_grads, group_solver_states) = run_group(
+                (state, loss, iter_grads, group_solver_states, noise_model_state) = run_group(
                     state, group=group, vars=iter_vars, iter_grads=iter_grads, props=propagators,
                     group_solvers=group_solvers, group_solver_states=group_solver_states,
                     patterns=patterns, pattern_mask=pattern_mask,
@@ -205,7 +205,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 @partial(
     jit,
     static_argnames=('vars', 'xp', 'dtype', 'noise_model', 'group_solvers'),
-    donate_argnames=('state', 'iter_grads', 'group_solver_states')
+    donate_argnames=('state', 'iter_grads', 'group_solver_states', 'noise_model_state')
 )
 def run_group(
     state: ReconsState,
@@ -221,11 +221,11 @@ def run_group(
     noise_model_state: t.Any,
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], t.List[t.Any]]:
+) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], t.List[t.Any], t.Any]:
     import jax
     xp = cast_array_module(xp)
 
-    (loss, grad) = jax.value_and_grad(run_model)(
+    ((loss, noise_model_state), grad) = jax.value_and_grad(run_model, has_aux=True)(
         select_vars(state, vars, group), state,
         group=group, props=props, patterns=patterns, pattern_mask=pattern_mask,
         noise_model=noise_model, noise_model_state=noise_model_state,
@@ -246,12 +246,13 @@ def run_group(
         )
         state = apply_update(state, update)
 
-    return (state, loss, iter_grads, group_solver_states)
+    return (state, loss, iter_grads, group_solver_states, noise_model_state)
 
 
 @partial(
     jit,
     static_argnames=('xp', 'dtype', 'noise_model'),
+    donate_argnames=('noise_model_state',),
 )
 def run_model(
     vars: t.Dict[ReconsVar, t.Any],
@@ -264,7 +265,7 @@ def run_model(
     noise_model_state: t.Any,
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> float:
+) -> t.Tuple[float, t.Any]:
     # apply vars to simulation
     if 'probe' in vars:
         sim.probe.data = vars['probe']
@@ -292,4 +293,4 @@ def run_model(
         model_wave, model_intensity, group_patterns, pattern_mask, noise_model_state
     )
 
-    return loss
+    return (loss, noise_model_state)
