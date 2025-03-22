@@ -2,14 +2,28 @@ import typing as t
 
 import numpy
 import pane
+from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode
+from pane.annotations import ConvertAnnotation
+from pane.util import pluralize, list_phrase
 
 if t.TYPE_CHECKING:
     from phaser.hooks import FlagArgs
     from phaser.plan import FlagLike
 
 
+class _ReconsVarsAnnotation(ConvertAnnotation):
+    def _converter(self, inner_type: t.Any, *, handlers: ConverterHandlers):
+        return _ReconsVarsConverter(inner_type, handlers)
+
+    def __hash__(self) -> int:
+        return hash(self.__class__.__name__)
+
+
 BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
 ReconsVar: t.TypeAlias = t.Literal['object', 'probe', 'scan']
+IterReconsVar: t.TypeAlias = t.Literal['scan']
+
+ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotation()]
 
 
 class Cancelled(BaseException):
@@ -95,6 +109,31 @@ def flag_any_true(flag: t.Callable[['FlagArgs'], bool], niter: int) -> bool:
         return flag.val
     # assume flag will return true
     return True
+
+
+class _ReconsVarsConverter(Converter[t.FrozenSet[ReconsVar]]):
+    def __init__(self, ty: type, handlers: ConverterHandlers):
+        self.inner = make_converter(ty, handlers)
+
+    def expected(self, plural: bool = False) -> str:
+        known_params = t.get_args(ReconsVar)
+        return f"{pluralize('set', plural, article='a')} of comma-separated " \
+            f"variables ({list_phrase(tuple(map(repr, known_params)))})"
+
+    def into_data(self, val: t.Any) -> str:
+        return ", ".join(self.inner.into_data(val))  # type: ignore
+
+    def try_convert(self, val: t.Any) -> t.FrozenSet[ReconsVar]:
+        if isinstance(val, str):
+            val = tuple(v.strip() for v in val.split(","))
+
+        return self.inner.try_convert(val)
+
+    def collect_errors(self, val: t.Any) -> t.Optional[ErrorNode]:
+        if isinstance(val, str):
+            val = tuple(v.strip() for v in val.split(","))
+
+        return self.inner.collect_errors(val)
 
 
 __all__ = [

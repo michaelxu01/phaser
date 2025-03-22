@@ -101,7 +101,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
 
         position_solver = None if props.position_solver is None else props.position_solver(None)
-        position_solver_state = None if position_solver is None else position_solver.init_state(sim)
+        position_solver_state = None if position_solver is None else position_solver.init_state(sim.state)
 
         propagators = make_propagators(sim.state)
 

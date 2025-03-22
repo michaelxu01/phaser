@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing as t
 
-from .types import Dataclass, Slices, BackendName, Flag, ReconsVar
+from .types import Dataclass, Slices, BackendName, Flag, ReconsVars
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, RegularizerHook
 from .hooks.solver import GradientSolverHook
@@ -100,22 +100,22 @@ class ConventionalEnginePlan(EnginePlan, kw_only=True):
 
 class GradientEnginePlan(EnginePlan):
     noise_model: NoiseModelHook
-    solvers: t.Sequence[GradientSolverHook]
+    solvers: t.Dict[ReconsVars, GradientSolverHook]
 
 
 class FixedSolverPlan(Dataclass, kw_only=True):
-    params: t.Sequence[ReconsVar]
     learning_rate: float
 
 
 class AdamSolverPlan(Dataclass, kw_only=True):
-    params: t.Sequence[ReconsVar]
     learning_rate: float
 
     b1: float = 0.9
     b2: float = 0.999
     eps: float = 1.0e-8
     eps_root: float = 0.0
+
+    nesterov: bool = False
 
 
 GradientSolverHook.known['adam'] = ('phaser.engines.gradient.solvers:AdamSolver', AdamSolverPlan)

@@ -190,9 +190,8 @@ class ConventionalSolverHook(Hook['ConventionalEnginePlan', ConventionalSolver])
 
 
 class GradientSolver(abc.ABC, t.Generic[StateT]):
-    @classmethod
     @abc.abstractmethod
-    def name(cls) -> str:
+    def name(self) -> str:
         ...
 
     @property
@@ -204,18 +203,17 @@ class GradientSolver(abc.ABC, t.Generic[StateT]):
     def init_state(self, sim: 'ReconsState', xp: t.Any) -> StateT:
         ...
 
-    def run_group(
-        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any],
-        iter: int, loss: float,
-    ) -> t.Tuple['ReconsState', StateT]:
-        return (sim, state)
-
-    def run_iter(
-        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any],
-        iter: int, loss: float,
-    ) -> t.Tuple['ReconsState', StateT]:
-        return (sim, state)
+    @abc.abstractmethod
+    def update(
+        self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, t.Any], loss: float,
+    ) -> t.Tuple[t.Dict[ReconsVar, t.Any], StateT]:
+        ...
 
 
-class GradientSolverHook(Hook['GradientEnginePlan', GradientSolver]):
+class GradientSolverArgs(t.TypedDict):
+    plan: 'GradientEnginePlan'
+    params: t.Iterable[ReconsVar]
+
+
+class GradientSolverHook(Hook['GradientSolverArgs', GradientSolver]):
     known = {}
