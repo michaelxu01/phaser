@@ -166,12 +166,14 @@ def as_numpy(arr: ArrayLike, stream=None) -> NDArray:
     return numpy.asarray(arr)
 
 
-def as_array(arr: ArrayLike) -> numpy.ndarray:
+def as_array(arr: ArrayLike, xp: t.Any = None) -> numpy.ndarray:
     """
     Convert an ArrayLike to an array, but not necessarily
     a numpy array.
     """
     if not t.TYPE_CHECKING:
+        if xp is not None:
+            return xp.asarray(arr)
         xp = get_array_module(arr)
         if xp is not numpy:
             return arr
@@ -511,6 +513,15 @@ class Sampling:
     """Sampling diameter (b, a)"""
     sampling: NDArray[numpy.float64]
     """Sample spacing (s_y, s_x)"""
+
+    def __eq__(self, other: t.Any) -> bool:
+        if type(self) != type(other):
+            return False
+        xp = get_array_module(self.sampling, other.sampling)
+        return (
+            xp.array_equal(self.shape, other.shape) and
+            xp.array_equal(self.extent, other.extent)
+        )
 
     @property
     def k_max(self) -> NDArray[numpy.float64]:

@@ -4,7 +4,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray, DTypeLike
 
-from phaser.utils.num import cast_array_module, to_complex_dtype, fft2, ifft2, is_jax, to_numpy
+from phaser.utils.num import get_array_module, to_real_dtype, to_complex_dtype, fft2, ifft2, is_jax, to_numpy
 from phaser.utils.misc import FloatKey, jax_dataclass
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
@@ -54,54 +54,71 @@ class SimulationState:
 
         self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
 
-        self.noise_model_state = noise_model_state or noise_model.init_state(self)
+        self.noise_model_state = noise_model_state or noise_model.init_state(self.state)
         self.regularizer_states = regularizer_states if regularizer_states is not None else tuple(
-            reg.init_state(self) for reg in regularizers
+            reg.init_state(self.state) for reg in regularizers
         )
 
 
-def make_propagators(sim: SimulationState) -> t.Optional[NDArray[numpy.complexfloating]]:
+def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloating]]:
+    xp = get_array_module(state.probe.data)
+    dtype = to_real_dtype(state.probe.data.dtype)
+    complex_dtype = to_complex_dtype(dtype)
+
+    (ky, kx) = state.probe.sampling.recip_grid(xp=xp, dtype=dtype)
+
     # ignore last slice; we don't need it
-    delta_zs = to_numpy(sim.state.object.thicknesses)[:-1]
+    delta_zs = to_numpy(state.object.thicknesses)[:-1]
     if len(delta_zs) == 0:
         return None
 
     unique_zs = set(map(FloatKey, delta_zs))
-    complex_dtype = to_complex_dtype(sim.dtype)
 
-    bwlim = numpy.min(sim.state.probe.sampling.k_max) * 0.9 #* 2./3.
+    bwlim = numpy.min(state.probe.sampling.k_max) * 0.9 #* 2./3.
 
-    k2 = sim.ky**2 + sim.kx**2
+    k2 = ky**2 + kx**2
     bwlim_mask = k2 <= bwlim**2
-    logger.info(f"Bandwidth limit: {bwlim * sim.state.wavelength * 1e3:6.2f} mrad")
+    logger.info(f"Bandwidth limit: {bwlim * state.wavelength * 1e3:6.2f} mrad")
 
     props = {
-        z: fresnel_propagator(sim.ky, sim.kx, sim.state.wavelength, z).astype(complex_dtype) * bwlim_mask
+        z: fresnel_propagator(ky, kx, state.wavelength, z).astype(complex_dtype) * bwlim_mask
         for z in unique_zs
     }
 
-    return cast_array_module(sim.xp).stack(
+    return xp.stack(
         [props[FloatKey(z)] for z in delta_zs],
         axis = 0
     )
 
 @t.overload
-def cutout_group(sim: SimulationState, group: NDArray[numpy.integer], return_filters: t.Literal[False] = False) -> t.Tuple[NDArray[numpy.complexfloating], NDArray[numpy.complexfloating], NDArray[numpy.floating]]:
+def cutout_group(
+    ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
+    state: ReconsState, group: NDArray[numpy.integer],
+    return_filters: t.Literal[False] = False
+) -> t.Tuple[NDArray[numpy.complexfloating], NDArray[numpy.complexfloating], NDArray[numpy.floating]]:
     ...
 
 @t.overload
-def cutout_group(sim: SimulationState, group: NDArray[numpy.integer], return_filters: t.Literal[True]) -> t.Tuple[NDArray[numpy.complexfloating], NDArray[numpy.complexfloating], NDArray[numpy.floating], NDArray[numpy.complexfloating]]:
+def cutout_group(
+    ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
+    state: ReconsState, group: NDArray[numpy.integer],
+    return_filters: t.Literal[True]
+) -> t.Tuple[NDArray[numpy.complexfloating], NDArray[numpy.complexfloating], NDArray[numpy.floating], NDArray[numpy.complexfloating]]:
     ...
 
-def cutout_group(sim: SimulationState, group: NDArray[numpy.integer], return_filters: bool = False):
+def cutout_group(
+    ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
+    state: ReconsState, group: NDArray[numpy.integer],
+    return_filters: bool = False
+):
     """Returns (probe, obj) in the cutout region"""
-    probes = sim.state.probe.data
+    probes = state.probe.data
 
-    group_scan = sim.state.scan[*group]
-    group_obj = sim.state.object.sampling.get_view_at_pos(sim.state.object.data, group_scan, probes.shape[-2:])
+    group_scan = state.scan[*group]
+    group_obj = state.object.sampling.get_view_at_pos(state.object.data, group_scan, probes.shape[-2:])
     # group probes in real space
     # shape (len(group), 1, Ny, Nx)
-    group_subpx_filters = fourier_shift_filter(sim.ky, sim.kx, sim.state.object.sampling.get_subpx_shifts(group_scan, probes.shape[-2:]))[:, None, ...]
+    group_subpx_filters = fourier_shift_filter(ky, kx, state.object.sampling.get_subpx_shifts(group_scan, probes.shape[-2:]))[:, None, ...]
     # shape (len(group), probe modes, Ny, Nx)
     shifted_probes = ifft2(fft2(probes) * group_subpx_filters)
 

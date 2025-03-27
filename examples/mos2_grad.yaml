@@ -1,0 +1,63 @@
+---
+name: "mos2_grad"
+backend: jax
+
+# raw data source
+raw_data:
+  type: empad
+  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
+  diff_step: 1.0  # mrad/px
+  kv: 120.        # keV
+
+# initialization
+
+init_probe:
+  type: 'focused'
+  conv_angle: 25  # mrad
+  defocus: 300    # angstrom
+
+init_object: 'random'
+
+init_scan:
+  type: 'raster'
+  shape: [64, 64] # ny, nx
+  step_size: 0.6  # angstrom
+
+preprocessing:
+ - type: poisson
+   scale: 1.0e+6
+
+# for each reconstruction engine
+engines:
+   # how to transition from previous state to current reconstruction state
+   # how to reconstruct
+   # how to output/save
+ - type: 'gradient'
+   probe_modes: 4
+   niter: 100
+   grouping: 256
+
+   noise_model:
+     type: 'poisson'
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 1.0
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-3
+
+   regularizers: []
+
+   update_probe: {after: 5}
+   #update_positions: {after: 30}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
+     ]
+
+   #send_every_group: True

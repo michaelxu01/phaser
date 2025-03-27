@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import typing as t
 
-from .types import Dataclass, Slices, BackendName, Flag
+from .types import Dataclass, Slices, BackendName, Flag, ReconsVars
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, RegularizerHook
+from .hooks.solver import GradientSolverHook
 
 
 FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
@@ -66,12 +67,16 @@ class AnscombeNoisePlan(AmplitudeNoisePlan, kw_only=True):
     offset: float = 0.375
 
 
+class PoissonNoisePlan(AmplitudeNoisePlan, kw_only=True):
+    offset: float = 1.0
+
+
 NoiseModelHook.known['amplitude'] = ('phaser.engines.common.noise_models:AmplitudeNoiseModel', AmplitudeNoisePlan)
 NoiseModelHook.known['anscombe'] = ('phaser.engines.common.noise_models:AnscombeNoiseModel', AnscombeNoisePlan)
+NoiseModelHook.known['poisson'] = ('phaser.engines.common.noise_models:PoissonNoiseModel', PoissonNoisePlan)
 
 
 class LSQMLSolverPlan(Dataclass, kw_only=True):
-    type: t.Literal['lsqml'] = 'lsqml'
     stochastic: bool = True
 
     beta_object: float = 1.0
@@ -84,8 +89,6 @@ class LSQMLSolverPlan(Dataclass, kw_only=True):
 
 
 class EPIESolverPlan(Dataclass, kw_only=True):
-    type: t.Literal['epie'] = 'epie'
-
     beta_object: float = 1.0
     beta_probe: float = 1.0
 
@@ -101,8 +104,27 @@ class ConventionalEnginePlan(EnginePlan, kw_only=True):
 
 
 class GradientEnginePlan(EnginePlan):
-    pass
+    noise_model: NoiseModelHook
+    solvers: t.Dict[ReconsVars, GradientSolverHook]
 
+
+class FixedSolverPlan(Dataclass, kw_only=True):
+    learning_rate: float
+
+
+class AdamSolverPlan(Dataclass, kw_only=True):
+    learning_rate: float
+
+    b1: float = 0.9
+    b2: float = 0.999
+    eps: float = 1.0e-8
+    eps_root: float = 0.0
+
+    nesterov: bool = False
+
+
+GradientSolverHook.known['adam'] = ('phaser.engines.gradient.solvers:AdamSolver', AdamSolverPlan)
+GradientSolverHook.known['fixed'] = ('phaser.engines.gradient.solvers:FixedSolver', FixedSolverPlan)
 
 EngineHook.known['conventional'] = ('phaser.engines.conventional.run:run_engine', ConventionalEnginePlan)
 EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', GradientEnginePlan)

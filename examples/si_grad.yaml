@@ -1,0 +1,63 @@
+---
+name: "si_grad"
+backend: jax
+
+# raw data source
+raw_data:
+  type: empad
+  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.8_x80_y80_4DSTEM.raw"
+  diff_step: 0.8  # mrad/px
+  kv: 300.        # keV
+
+# initialization
+
+init_probe:
+  type: 'focused'
+  conv_angle: 25  # mrad
+  defocus: 100   # angstrom
+
+init_object: 'random'
+
+init_scan:
+  type: 'raster'
+  shape: [80, 80] # ny, nx
+  step_size: 0.3  # angstrom
+
+preprocessing:
+ - type: poisson
+   scale: 1.0e+6
+
+# for each reconstruction engine
+engines:
+   # how to transition from previous state to current reconstruction state
+   # how to reconstruct
+   # how to output/save
+ - type: 'gradient'
+   probe_modes: 4
+   slices:
+     n: 20
+     total_thickness: 200
+
+   niter: 500
+   grouping: 128
+
+   noise_model: poisson
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 5.0e-4
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-3
+
+   regularizers: []
+   update_probe: {after: 3}
+
+   save: {every: 10}
+   save_images: {every: 2}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack'
+     ]

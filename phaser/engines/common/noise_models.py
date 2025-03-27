@@ -5,9 +5,9 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.hooks.solver import NoiseModel
-from phaser.plan import AmplitudeNoisePlan, AnscombeNoisePlan
+from phaser.plan import AmplitudeNoisePlan, AnscombeNoisePlan, PoissonNoisePlan
 from phaser.utils.num import get_array_module
-from .simulation import SimulationState
+from phaser.state import ReconsState
 
 
 class AmplitudeNoiseModel(NoiseModel[None]):
@@ -23,7 +23,7 @@ class AmplitudeNoiseModel(NoiseModel[None]):
 
         self.eps: float = props.eps
 
-    def init_state(self, sim: SimulationState) -> None:
+    def init_state(self, sim: ReconsState) -> None:
         return None
 
     def calc_loss(
@@ -70,3 +70,43 @@ class AnscombeNoiseModel(AmplitudeNoiseModel):
 
     def __init__(self, args: None, props: AnscombeNoisePlan):
         super().__init__(args, props)
+
+
+class PoissonNoiseModel(NoiseModel[None]):
+    @classmethod
+    def name(cls) -> str:
+        return "poisson"
+
+    def __init__(self, args: None, props: PoissonNoisePlan):
+        self.offset: float = props.offset
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss(
+        self,
+        model_wave: NDArray[numpy.complexfloating],
+        model_intensity: NDArray[numpy.floating],
+        exp_patterns: NDArray[numpy.floating],
+        mask: NDArray[numpy.floating], 
+        state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
+        patterns = xp.maximum(exp_patterns, 0.0) + self.offset
+        intensity = model_intensity + self.offset
+
+        loss = t.cast(float, xp.sum(mask * xp.abs(
+            intensity - patterns + patterns * (xp.log(patterns) - xp.log(intensity))
+            #patterns - (model_intensity + self.offset) * xp.log(patterns)
+        )))
+        return (loss, state)
+
+    def calc_wave_update(
+        self,
+        model_wave: NDArray[numpy.complexfloating],
+        model_intensity: NDArray[numpy.floating],
+        exp_patterns: NDArray[numpy.floating],
+        mask: NDArray[numpy.floating], 
+        state: None
+    ) -> t.Tuple[NDArray[numpy.complexfloating], None]:
+        raise NotImplementedError()
