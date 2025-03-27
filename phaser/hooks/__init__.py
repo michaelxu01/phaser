@@ -84,7 +84,8 @@ class ScanHookArgs(t.TypedDict):
 
 
 class RasterScanProps(Dataclass):
-    shape: t.Tuple[int, int]  # ny, nx
+    shape: t.Tuple[int, int]  # ny, nx (total shape)
+    crop: t.Optional[tuple] = None
     step_size: float          # A
     rotation: float = 0.0     # degrees CCW
 
@@ -107,6 +108,10 @@ class ScaleProps(Dataclass):
     scale: float
 
 
+class ROICropProps(Dataclass):
+    region: t.Tuple[int, int, int, int] #nxi, nxf, nyi, nyf 
+
+
 class PoissonProps(Dataclass):
     scale: t.Optional[float] = None
     gaussian: t.Optional[float] = 1.0e-3
@@ -126,6 +131,7 @@ class PreprocessingHook(Hook[PreprocessingArgs, t.Tuple['Patterns', 'ReconsState
         'scale': ('phaser.hooks.preprocessing:scale_patterns', ScaleProps),
         'drop_nans': ('phaser.hooks.preprocessing:drop_nan_patterns', DropNanProps),
         'diffraction_align': ('phaser.hooks.preprocessing:diffraction_align', DiffractionAlignProps),
+        # 'roi_crop': ('phaser.hooks.preprocessing:roi_crop', ROICropProps),
     }
 
 

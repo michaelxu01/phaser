@@ -5,7 +5,7 @@ from phaser.utils.num import get_array_module, to_numpy, fft2, ifft2, at
 from phaser.utils.misc import create_rng, create_sparse_groupings
 from phaser.utils.optics import fourier_shift_filter
 from phaser.state import Patterns, ReconsState
-from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps
+from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps, ROICropProps
 
 logger = logging.getLogger(__name__)
 
