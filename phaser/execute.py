@@ -126,12 +126,20 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         probe.data = probe.data.reshape((1, *probe.data.shape))
 
     logging.info("Initializing scan...")
+
+    data_crop = None
     if plan.init_scan is None:
         if raw_data['scan'] is None:
             raise ValueError("`init_scan` must be specified by raw_data or manually")
         scan = xp.array(raw_data['scan']).astype(dtype)
     else:
-        scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
+        scan, data_crop = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
+
+    if data_crop != None:
+        yi, yf, xi, xf = data_crop
+        data.patterns = data.patterns[yi:yf, xi:xf,:, :]
+        # data.pattern_mask = data.pattern_mask[yi:yf, xi:xf]
+        print(data.patterns.shape)
 
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
