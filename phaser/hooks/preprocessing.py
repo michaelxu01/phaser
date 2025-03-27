@@ -1,9 +1,14 @@
 import logging
+import math
 import typing as t
 
-from phaser.utils.num import get_array_module, to_numpy, fft2, ifft2, at
+import numpy
+from numpy.typing import NDArray
+
+from phaser.utils.num import get_array_module, cast_array_module, to_numpy, fft2, ifft2, at
 from phaser.utils.misc import create_rng, create_sparse_groupings
 from phaser.utils.optics import fourier_shift_filter
+from phaser.utils.image import affine_transform
 from phaser.state import Patterns, ReconsState
 from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps, ROICropProps
 
@@ -61,24 +66,40 @@ def drop_nan_patterns(args: PreprocessingArgs, props: DropNanProps) -> t.Tuple[P
 
 def diffraction_align(args: PreprocessingArgs, props: t.Any = None) -> t.Tuple[Patterns, ReconsState]:
     patterns, state = args['data'], args['state']
-    xp = get_array_module(patterns.patterns)
 
-    mean_pattern = xp.nanmean(patterns.patterns * patterns.pattern_mask, axis=tuple(range(args['data'].patterns.ndim - 2)))
+    xp = cast_array_module(args['xp'])
+    grouping = 128
+    groups = create_sparse_groupings(patterns.patterns.shape[:-2], grouping)
+
+    sum_pattern = xp.zeros(patterns.patterns.shape[-2:], dtype=patterns.patterns.dtype)
+
+    for group in groups:
+        pats = xp.array(patterns.patterns[*group]) * xp.array(patterns.pattern_mask)
+        sum_pattern += t.cast(NDArray[numpy.floating], xp.nansum(pats, axis=tuple(range(pats.ndim - 2))))
+
+    mean_pattern = sum_pattern / math.prod(patterns.patterns.shape[:-2])
+
     ky, kx = state.probe.sampling.recip_grid(dtype=patterns.patterns.dtype, xp=xp)
-    yy, xx = state.probe.sampling.real_grid(dtype=patterns.patterns.dtype, xp=xp)
+    #yy, xx = state.probe.sampling.real_grid(dtype=patterns.patterns.dtype, xp=xp)
 
-    ky_shift = xp.nansum(ky * mean_pattern) / xp.nansum(mean_pattern)
-    kx_shift = xp.nansum(kx * mean_pattern) / xp.nansum(mean_pattern)
+    shift = xp.array([
+        xp.nansum(ky * mean_pattern), xp.nansum(kx * mean_pattern)
+    ]) / xp.nansum(mean_pattern)
+    # 1/A -> px
+    shift *= xp.array(state.probe.sampling.extent)
 
-    logging.info(f"Shifting diffraction patterns, ({kx_shift * state.probe.sampling.extent[1]}, {ky_shift * state.probe.sampling.extent[0]}) px...")
-    shift = fourier_shift_filter(yy, xx, (ky_shift, kx_shift))
+    logging.info(f"Shifting diffraction patterns by ({shift[1]}, {shift[0]}) px")
 
-    for group in create_sparse_groupings(patterns.patterns.shape[:-2], 128):
-        patterns.patterns = at(patterns.patterns, group).set(
-            fft2(ifft2(patterns.patterns[*group]) * shift).real
-        )
+    def bilinear_shift(arr: NDArray[numpy.floating]) -> NDArray[numpy.floating]:
+        return to_numpy(xp.fft.ifftshift(affine_transform(
+            xp.fft.fftshift(xp.array(arr), axes=(-2, -1)), [1., 1.], shift,
+            output_shape=arr.shape[-2:], order=1
+        ), axes=(-2, -1)))
+
+    for group in groups:
+        patterns.patterns[*group] = bilinear_shift(patterns.patterns[*group])
 
     # fftshift mask as well
-    patterns.pattern_mask = fft2(ifft2(patterns.pattern_mask) * shift).real
+    patterns.pattern_mask = bilinear_shift(patterns.pattern_mask)
 
     return (patterns, state)

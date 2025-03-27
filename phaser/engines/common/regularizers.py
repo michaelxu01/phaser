@@ -1,13 +1,17 @@
 from functools import partial
+import logging
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import get_array_module, get_scipy_module, jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
+from phaser.utils.num import (
+    get_array_module, get_scipy_module, cast_array_module,
+    jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
+)
 from phaser.hooks.solver import (
     GradientRegularizer, ConstraintRegularizer, ClampObjectAmplitudeProps,
-    LimitProbeSupportProps, RegularizeLayersProps
+    LimitProbeSupportProps, RegularizeLayersProps, ObjLowPassProps
 )
 from .simulation import SimulationState
 
@@ -98,3 +102,27 @@ class RegularizeLayers(ConstraintRegularizer[None]):
             self.weight * new_obj + (1 - self.weight) * sim.state.object.data
         )
         return (sim, None)
+
+
+class ObjLowPass(ConstraintRegularizer[NDArray[numpy.bool_]]):
+    def __init__(self, args: None, props: ObjLowPassProps):
+        self.logger = logging.getLogger(__name__)
+        self.max_freq = props.max_freq
+
+    def init_state(self, sim: SimulationState) -> NDArray[numpy.bool_]:
+        samp = sim.state.object.sampling
+        xp = cast_array_module(sim.xp)
+
+        ky = xp.fft.fftfreq(samp.shape[0], 1.0)
+        kx = xp.fft.fftfreq(samp.shape[1], 1.0)
+        (ky, kx) = xp.meshgrid(ky, kx, indexing='ij')
+        k2 = ky**2 + kx**2
+
+        return k2 <= self.max_freq**2
+
+    def apply_group(
+        self, group: NDArray[numpy.integer], sim: SimulationState, state: NDArray[numpy.bool_]
+    ) -> t.Tuple[SimulationState, NDArray[numpy.bool_]]:
+        # TODO: should this be done in-place?
+        sim.state.object.data = ifft2(state * fft2(sim.state.object.data))
+        return (sim, state)

@@ -133,11 +133,16 @@ class RegularizeLayersProps(Dataclass):
     sigma: float = 50.0  # standard deviation of gaussian filter
 
 
+class ObjLowPassProps(Dataclass):
+    max_freq: float = 0.4  # 1/px (nyquist = 0.5)
+
+
 class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
     known = {
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
         'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),
+        'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
     }
 
 
