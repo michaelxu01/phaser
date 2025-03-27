@@ -138,8 +138,8 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     if data_crop != None:
         yi, yf, xi, xf = data_crop
         data.patterns = data.patterns[yi:yf, xi:xf,:, :]
-        # data.pattern_mask = data.pattern_mask[yi:yf, xi:xf]
-        print(data.patterns.shape)
+        # data.pattern_mask = data.pattern_mask[yi:yf, xi:xf,:,:]
+        # print(data.pattern_mask.shape)
 
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
