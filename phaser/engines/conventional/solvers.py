@@ -6,11 +6,10 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
-from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
+from phaser.hooks.solver import GroupConstraint, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState, cutout_group, slice_forwards, slice_backwards
-from .run import apply_regularizers_group
 
 
 class LSQMLSolver(ConventionalSolver):
@@ -97,7 +96,7 @@ class LSQMLSolver(ConventionalSolver):
             assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
             assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-            sim = apply_regularizers_group(sim, group)
+            sim = sim.apply_group_constraints(group)
 
             if update_positions:
                 assert group_pos_update is not None
@@ -333,11 +332,7 @@ class EPIESolver(ConventionalSolver):
             assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
             assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-            sim = apply_regularizers_group(sim, group)
-
-            #if update_positions:
-            #    assert group_pos_update is not None
-            #    pos_update[*group] = group_pos_update
+            sim = sim.apply_group_constraints(group)
 
             observer.update_group(sim.state, self.engine_plan.send_every_group)
 

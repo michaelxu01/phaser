@@ -7,7 +7,7 @@ from phaser.utils.num import get_array_module
 from phaser.hooks.solver import (
     PositionSolver, SteepestDescentPositionSolverProps, MomentumPositionSolverProps
 )
-from phaser.engines.common.simulation import SimulationState
+from phaser.state import ReconsState
 
 
 class SteepestDescentPositionSolver(PositionSolver[None]):
@@ -15,7 +15,7 @@ class SteepestDescentPositionSolver(PositionSolver[None]):
         self.step_size = props.step_size
         self.max_step_size = props.step_size
 
-    def init_state(self, sim: SimulationState) -> None:
+    def init_state(self, sim: ReconsState) -> None:
         return None
 
     def perform_update(
@@ -40,9 +40,9 @@ class MomentumPositionSolver(PositionSolver[NDArray[numpy.floating]]):
         self.max_step_size = props.max_step_size
         self.momentum = props.momentum
 
-    def init_state(self, sim: SimulationState) -> NDArray[numpy.floating]:
-        xp = get_array_module(sim.state.scan)
-        return xp.zeros_like(sim.state.scan)
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.floating]:
+        xp = get_array_module(sim.scan)
+        return xp.zeros_like(sim.scan)
 
     def perform_update(
         self,

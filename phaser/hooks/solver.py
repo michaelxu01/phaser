@@ -16,19 +16,16 @@ if t.TYPE_CHECKING:
     from phaser.state import ReconsState
 
 
-class HasState(abc.ABC, t.Generic[StateT]):
-    @abc.abstractmethod
+class HasState(t.Protocol[StateT]):  # type: ignore
     def init_state(self, sim: 'ReconsState') -> StateT:
         ...
 
 
-class NoiseModel(HasState[StateT], abc.ABC):
+class NoiseModel(HasState[StateT], t.Protocol[StateT]):
     @classmethod
-    @abc.abstractmethod
     def name(cls) -> str:
         ...
 
-    @abc.abstractmethod
     def calc_loss(
         self,
         model_wave: NDArray[numpy.complexfloating],
@@ -44,7 +41,6 @@ class NoiseModel(HasState[StateT], abc.ABC):
         """
         ...
 
-    @abc.abstractmethod
     def calc_wave_update(
         self,
         model_wave: NDArray[numpy.complexfloating],
@@ -65,8 +61,7 @@ class NoiseModelHook(Hook[None, NoiseModel]):
     known = {}
 
 
-class PositionSolver(HasState[StateT], abc.ABC):
-    @abc.abstractmethod
+class PositionSolver(HasState[StateT], t.Protocol[StateT]):
     def perform_update(
         self,
         positions: NDArray[numpy.floating],
@@ -107,17 +102,21 @@ class PositionSolverHook(Hook[None, PositionSolver]):
 # then there can be a list of each of these types in the engine
 
 
-class ConstraintRegularizer(HasState[StateT], abc.ABC):
-    def apply_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple['SimulationState', StateT]:
-        return (sim, state)
-
-    def apply_iter(self, sim: 'SimulationState', state: StateT) -> t.Tuple['SimulationState', StateT]:
-        return (sim, state)
+@t.runtime_checkable
+class GroupConstraint(HasState[StateT], t.Protocol[StateT]):
+    def apply_group(self, group: NDArray[numpy.integer], sim: 'ReconsState', state: StateT) -> t.Tuple['ReconsState', StateT]:
+        ...
 
 
-class GradientRegularizer(HasState[StateT], abc.ABC):
-    @abc.abstractmethod
-    def calc_loss_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple[float, StateT]:
+@t.runtime_checkable
+class IterConstraint(HasState[StateT], t.Protocol[StateT]):
+    def apply_iter(self, sim: 'ReconsState', state: StateT) -> t.Tuple['ReconsState', StateT]:
+        ...
+
+
+@t.runtime_checkable
+class CostRegularizer(HasState[StateT], t.Protocol[StateT]):
+    def calc_loss_group(self, group: NDArray[numpy.integer], sim: 'ReconsState', state: StateT) -> t.Tuple[float, StateT]:
         ...
 
 
@@ -138,12 +137,31 @@ class ObjLowPassProps(Dataclass):
     max_freq: float = 0.4  # 1/px (nyquist = 0.5)
 
 
-class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
+class IterConstraintHook(Hook[None, IterConstraint]):
     known = {
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
         'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),
         'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
+    }
+
+
+class GroupConstraintHook(Hook[None, GroupConstraint]):
+    known = {
+        'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
+        'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
+        'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
+    }
+
+
+class CostRegularizerProps(Dataclass):
+    cost: float
+
+
+class CostRegularizerHook(Hook[None, CostRegularizer]):
+    known = {
+        'obj_recip_l1': ('phaser.engines.common.regularizers:ObjRecipL1', CostRegularizerProps),
+        'obj_tv': ('phaser.engines.common.regularizers:ObjTotalVariation', CostRegularizerProps),
     }
 
 
@@ -189,21 +207,13 @@ class ConventionalSolverHook(Hook['ConventionalEnginePlan', ConventionalSolver])
     known = {}
 
 
-class GradientSolver(abc.ABC, t.Generic[StateT]):
-    @abc.abstractmethod
-    def name(self) -> str:
+class GradientSolver(HasState[StateT], t.Protocol[StateT]):
+    name: str
+    params: t.AbstractSet[ReconsVar]
+
+    def init_state(self, sim: 'ReconsState') -> StateT:
         ...
 
-    @property
-    @abc.abstractmethod
-    def params(self) -> t.AbstractSet[ReconsVar]:
-        ...
-
-    @abc.abstractmethod
-    def init_state(self, sim: 'ReconsState', xp: t.Any) -> StateT:
-        ...
-
-    @abc.abstractmethod
     def update(
         self, sim: 'ReconsState', state: StateT, grad: t.Dict[ReconsVar, numpy.ndarray], loss: float,
     ) -> t.Tuple[t.Dict[ReconsVar, numpy.ndarray], StateT]:

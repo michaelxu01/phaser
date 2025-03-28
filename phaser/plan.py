@@ -4,8 +4,8 @@ import typing as t
 
 from .types import Dataclass, Slices, BackendName, Flag, ReconsVars
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
-from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, RegularizerHook
-from .hooks.solver import GradientSolverHook
+from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
+from .hooks.solver import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
 
 
 FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
@@ -40,8 +40,6 @@ class EnginePlan(Dataclass, kw_only=True):
     niter: int = 10
     grouping: t.Optional[int] = None
     compact: bool = False
-
-    regularizers: t.List[RegularizerHook]
 
     update_probe: FlagLike = True
     update_object: FlagLike = True
@@ -102,10 +100,17 @@ class ConventionalEnginePlan(EnginePlan, kw_only=True):
     solver: ConventionalSolverHook
     position_solver: t.Optional[PositionSolverHook] = None
 
+    group_constraints: t.List[GroupConstraintHook]
+    iter_constraints: t.List[IterConstraintHook]
+
 
 class GradientEnginePlan(EnginePlan):
     noise_model: NoiseModelHook
     solvers: t.Dict[ReconsVars, GradientSolverHook]
+
+    regularizers: t.List[CostRegularizerHook]
+    group_constraints: t.List[GroupConstraintHook]
+    iter_constraints: t.List[IterConstraintHook]
 
 
 class FixedSolverPlan(Dataclass, kw_only=True):

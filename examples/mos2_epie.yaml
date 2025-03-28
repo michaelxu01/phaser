@@ -46,10 +46,8 @@ engines:
      beta_object: 0.5
      beta_probe: 0.5
 
-   regularizers: []
-   # - 'clamp_object_amplitude'
-    #- type: 'limit_probe_support'
-    #  max_angle: 25
+   group_constraints: []
+   iter_constraints: []
 
    update_probe: {after: 5}
 

@@ -57,5 +57,6 @@ engines:
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
      ]
 
-   regularizers: []
+   group_constraints: []
+   iter_constraints: []
    update_probe: {after: 5}

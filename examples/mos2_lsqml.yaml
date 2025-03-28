@@ -56,9 +56,10 @@ engines:
      step_size: 8.0e-2
      max_step_size: 0.2
 
-   regularizers:
+   group_constraints:
     - type: clamp_object_amplitude
       amplitude: 1.1
+   iter_constraints: []
 
    update_probe: {after: 1}
    update_positions: {after: 30}

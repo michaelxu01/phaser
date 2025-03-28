@@ -8,15 +8,14 @@ from phaser.utils.num import get_array_module, to_real_dtype, to_complex_dtype, 
 from phaser.utils.misc import FloatKey, jax_dataclass
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
-from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
+from phaser.hooks.solver import NoiseModel, GroupConstraint, IterConstraint, StateT
 
 logger = logging.getLogger(__name__)
 
 
-@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'regularizers'), drop_fields=('ky', 'kx'))
+@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'group_constraints', 'iter_constraints'), drop_fields=('ky', 'kx'))
 class SimulationState:
     state: ReconsState
-    noise_model_state: t.Any
     patterns: NDArray[numpy.floating]
     pattern_mask: NDArray[numpy.floating]
 
@@ -24,7 +23,13 @@ class SimulationState:
     kx: NDArray[numpy.floating]
 
     noise_model: NoiseModel
-    regularizers: t.Tuple[ConstraintRegularizer, ...]
+    group_constraints: t.Tuple[GroupConstraint[t.Any], ...]
+    iter_constraints: t.Tuple[IterConstraint[t.Any], ...]
+
+    noise_model_state: t.Any
+    group_constraint_states: t.Tuple[t.Any, ...]
+    iter_constraint_states: t.Tuple[t.Any, ...]
+
     xp: t.Any
     dtype: DTypeLike
     start_iter: int
@@ -32,14 +37,16 @@ class SimulationState:
     def __init__(
         self, *,
         state: ReconsState,
-        noise_model: NoiseModel[StateT],
-        regularizers: t.Tuple[ConstraintRegularizer, ...],
+        noise_model: NoiseModel[t.Any],
+        group_constraints: t.Tuple[GroupConstraint[t.Any], ...],
+        iter_constraints: t.Tuple[IterConstraint[t.Any], ...],
         patterns: NDArray[numpy.floating],
         pattern_mask: NDArray[numpy.floating],
         xp: t.Any,
         dtype: DTypeLike,
-        regularizer_states: t.Optional[t.Tuple[ConstraintRegularizer, ...]] = None,
-        noise_model_state: t.Optional[StateT] = None,
+        noise_model_state: t.Optional[t.Any] = None,
+        group_constraint_states: t.Optional[t.Tuple[t.Any, ...]] = None,
+        iter_constraint_states: t.Optional[t.Tuple[t.Any, ...]] = None,
         start_iter: t.Optional[int] = None,
     ):
         self.xp = xp
@@ -48,16 +55,42 @@ class SimulationState:
         self.patterns = patterns
         self.pattern_mask = xp.array(pattern_mask)
 
-        self.regularizers = regularizers
         self.noise_model = noise_model
-        (self.ky, self.kx) = state.probe.sampling.recip_grid(dtype=dtype, xp=xp)
-
-        self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
+        self.group_constraints = group_constraints
+        self.iter_constraints = iter_constraints
 
         self.noise_model_state = noise_model_state or noise_model.init_state(self.state)
-        self.regularizer_states = regularizer_states if regularizer_states is not None else tuple(
-            reg.init_state(self.state) for reg in regularizers
+        self.group_constraint_states = group_constraint_states if group_constraint_states is not None else tuple(
+            reg.init_state(self.state) for reg in group_constraints
         )
+        self.iter_constraint_states = iter_constraint_states if iter_constraint_states is not None else tuple(
+            reg.init_state(self.state) for reg in iter_constraints
+        )
+
+        self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
+        (self.ky, self.kx) = state.probe.sampling.recip_grid(dtype=dtype, xp=xp)
+
+    def apply_group_constraints(self, group: NDArray[numpy.integer]) -> t.Self:
+        def apply_reg(reg: GroupConstraint[t.Any], state: t.Any):
+            (self.state, state) = reg.apply_group(group, self.state, state)
+            return state
+
+        self.group_constraint_states = tuple(
+            apply_reg(reg, state) for (reg, state) in zip(self.group_constraints, self.group_constraint_states)
+        )
+
+        return self
+
+    def apply_iter_constraints(self) -> t.Self:
+        def apply_reg(reg: IterConstraint[t.Any], state: t.Any):
+            (self.state, state) = reg.apply_iter(self.state, state)
+            return state
+
+        self.iter_constraint_states = tuple(
+            apply_reg(reg, state) for (reg, state) in zip(self.iter_constraints, self.iter_constraint_states)
+        )
+
+        return self
 
 
 def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloating]]:
