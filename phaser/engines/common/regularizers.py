@@ -6,31 +6,35 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import (
-    get_array_module, get_scipy_module, cast_array_module,
-    jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
+    get_array_module, get_scipy_module,
+    jit, fft2, ifft2, xp_is_jax, to_real_dtype
 )
+from phaser.state import ReconsState
 from phaser.hooks.solver import (
-    GradientRegularizer, ConstraintRegularizer, ClampObjectAmplitudeProps,
-    LimitProbeSupportProps, RegularizeLayersProps, ObjLowPassProps
+    GroupConstraint, #IterConstraint, CostRegularizer,
+    ClampObjectAmplitudeProps, LimitProbeSupportProps,
+    RegularizeLayersProps, ObjLowPassProps, CostRegularizerProps
 )
-from .simulation import SimulationState
 
 
-class ClampObjectAmplitude(ConstraintRegularizer[None]):
+class ClampObjectAmplitude:
     def __init__(self, args: None, props: ClampObjectAmplitudeProps):
         self.amplitude = props.amplitude
 
-    def init_state(self, sim: SimulationState) -> None:
+    def init_state(self, sim: ReconsState) -> None:
         return None
 
-    def apply_group(self, group: NDArray[numpy.integer], sim: SimulationState, state: None) -> t.Tuple[SimulationState, None]:
-        amp: float = numpy.dtype(sim.dtype).type(self.amplitude)  # type: ignore
-        sim.state.object.data = clamp_amplitude(sim.state.object.data, amp)
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        amp = to_real_dtype(sim.object.data.dtype)(self.amplitude)
+        sim.object.data = clamp_amplitude(sim.object.data, amp)
         return (sim, None)
 
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
-def clamp_amplitude(obj: NDArray[numpy.complexfloating], amplitude: float) -> NDArray[numpy.complexfloating]:
+def clamp_amplitude(obj: NDArray[numpy.complexfloating], amplitude: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
     xp = get_array_module(obj)
 
     obj_amp = xp.abs(obj)
@@ -38,41 +42,46 @@ def clamp_amplitude(obj: NDArray[numpy.complexfloating], amplitude: float) -> ND
     return obj * scale
 
 
-class LimitProbeSupport(ConstraintRegularizer[NDArray[numpy.bool_]]):
+class LimitProbeSupport:
     def __init__(self, args: None, props: LimitProbeSupportProps):
         self.max_angle = props.max_angle
 
-    def init_state(self, sim: SimulationState) -> NDArray[numpy.bool_]:
-        mask = sim.kx**2 + sim.ky**2 <= (self.max_angle*1e-3 / sim.state.wavelength)**2
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.bool_]:
+        xp = get_array_module(sim.probe.data)
+        (ky, kx) = sim.probe.sampling.recip_grid(xp=xp)
+        mask = kx**2 + ky**2 <= (self.max_angle*1e-3 / sim.wavelength)**2
         return mask
 
-    def apply_iter(self, sim: SimulationState, state: NDArray[numpy.bool_]) -> t.Tuple[SimulationState, NDArray[numpy.bool_]]:
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: NDArray[numpy.bool_]) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(self, sim: ReconsState, state: NDArray[numpy.bool_]) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
         mask = state
         #xp = get_array_module(sim.state.probe.data)
         #print(f"intensity before: {xp.sum(abs2(sim.state.probe.data))}")
-        sim.state.probe.data = ifft2(fft2(sim.state.probe.data) * mask)
+        sim.probe.data = ifft2(fft2(sim.probe.data) * mask)
         #print(f"intensity after: {xp.sum(abs2(sim.state.probe.data))}")
         return (sim, mask)
 
 
-class RegularizeLayers(ConstraintRegularizer[None]):
+class RegularizeLayers:
     def __init__(self, args: None, props: RegularizeLayersProps):
         self.weight = props.weight
         self.sigma = props.sigma
 
-    def init_state(self, sim: SimulationState) -> None:
+    def init_state(self, sim: ReconsState) -> None:
         return None
 
-    def apply_iter(self, sim: SimulationState, state: None) -> t.Tuple[SimulationState, None]:
-        xp = get_array_module(sim.state.object.data)
-        scipy = get_scipy_module(sim.state.object.data)
-        dtype = to_real_dtype(sim.state.object.data)
+    def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        xp = get_array_module(sim.object.data)
+        scipy = get_scipy_module(sim.object.data)
+        dtype = to_real_dtype(sim.object.data)
 
-        if len(sim.state.object.thicknesses) < 2:
+        if len(sim.object.thicknesses) < 2:
             return (sim, None)
 
         # approximate layers as equally spaced
-        layer_spacing = numpy.mean(sim.state.object.thicknesses)
+        layer_spacing = numpy.mean(sim.object.thicknesses)
         # calculate size of filter (go to ~sigma in each direction)
         r = int(numpy.ceil(2. * self.sigma / layer_spacing))
         n = 2*r + 1
@@ -87,31 +96,31 @@ class RegularizeLayers(ConstraintRegularizer[None]):
 
         if xp_is_jax(xp):
             new_obj = xp.exp(scipy.signal.convolve(
-                xp.pad(xp.log(sim.state.object.data), ((r, r), (0, 0), (0, 0)), mode='edge'),
+                xp.pad(xp.log(sim.object.data), ((r, r), (0, 0), (0, 0)), mode='edge'),
                 kernel[:, None, None],
                 mode="valid"
             ))
         else:
             new_obj = xp.exp(scipy.ndimage.convolve1d(xp.log(
-                sim.state.object.data
+                sim.object.data
             ), kernel, axis=0, mode='nearest'))
 
-        assert new_obj.shape == sim.state.object.data.shape
-        assert new_obj.dtype == sim.state.object.data.dtype
-        sim.state.object.data = (
-            self.weight * new_obj + (1 - self.weight) * sim.state.object.data
+        assert new_obj.shape == sim.object.data.shape
+        assert new_obj.dtype == sim.object.data.dtype
+        sim.object.data = (
+            self.weight * new_obj + (1 - self.weight) * sim.object.data
         )
         return (sim, None)
 
 
-class ObjLowPass(ConstraintRegularizer[NDArray[numpy.bool_]]):
+class ObjLowPass:
     def __init__(self, args: None, props: ObjLowPassProps):
         self.logger = logging.getLogger(__name__)
         self.max_freq = props.max_freq
 
-    def init_state(self, sim: SimulationState) -> NDArray[numpy.bool_]:
-        samp = sim.state.object.sampling
-        xp = cast_array_module(sim.xp)
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.bool_]:
+        samp = sim.object.sampling
+        xp = get_array_module(sim.object.data)
 
         ky = xp.fft.fftfreq(samp.shape[0], 1.0)
         kx = xp.fft.fftfreq(samp.shape[1], 1.0)
@@ -121,8 +130,58 @@ class ObjLowPass(ConstraintRegularizer[NDArray[numpy.bool_]]):
         return k2 <= self.max_freq**2
 
     def apply_group(
-        self, group: NDArray[numpy.integer], sim: SimulationState, state: NDArray[numpy.bool_]
-    ) -> t.Tuple[SimulationState, NDArray[numpy.bool_]]:
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: NDArray[numpy.bool_]
+    ) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(
+        self, sim: ReconsState, state: NDArray[numpy.bool_]
+    ) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
         # TODO: should this be done in-place?
-        sim.state.object.data = ifft2(state * fft2(sim.state.object.data))
+        sim.object.data = ifft2(state * fft2(sim.object.data))
         return (sim, state)
+
+
+class ObjRecipL1:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        # l1 norm of diff. pattern amplitude
+        # TODO log object before this?
+        cost = xp.sum(
+            xp.abs(fft2(xp.prod(sim.object.data, axis=0)))
+        )
+        # scale cost by fraction of the total reconstruction in the group
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+
+        return (cost * cost_scale * self.cost, state)
+
+
+class ObjTotalVariation:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        cost = xp.add(*(
+            xp.sum(xp.abs(xp.diff(sim.object.data, axis=ax)))
+            for ax in (-1, -2)
+        ))
+        # scale cost by fraction of the total reconstruction in the group
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+
+        return (cost * cost_scale * self.cost, state)

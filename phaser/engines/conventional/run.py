@@ -10,38 +10,12 @@ from phaser.utils.num import cast_array_module, to_numpy, to_complex_dtype
 from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.hooks import EngineArgs
-from phaser.hooks.solver import ConstraintRegularizer
+from phaser.hooks.solver import GroupConstraint, IterConstraint
 from phaser.plan import ConventionalEnginePlan
 from phaser.state import ReconsState
 from phaser.types import process_flag, flag_any_true
 from ..common.output import output_images, output_state
 from ..common.simulation import SimulationState, make_propagators
-
-
-def apply_regularizers_group(sim: SimulationState, group: NDArray[numpy.integer]) -> SimulationState:
-    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
-        nonlocal sim
-        (sim, state) = reg.apply_group(group, sim, state)
-        return state
-
-    sim.regularizer_states = tuple(
-        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
-    )
-
-    return sim
-
-
-def apply_regularizers_iter(sim: SimulationState) -> SimulationState:
-    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
-        nonlocal sim
-        (sim, state) = reg.apply_iter(sim, state)
-        return state
-
-    sim.regularizer_states = tuple(
-        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
-    )
-
-    return sim
 
 
 def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
@@ -56,9 +30,8 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     logger.info(f"Starting engine #{args['engine_i'] + 1}...")
 
     noise_model = props.noise_model(None)
-    regularizers = t.cast(t.Tuple[ConstraintRegularizer, ...], tuple(
-        reg(None) for reg in props.regularizers
-    ))
+    group_constraints = tuple(reg(None) for reg in props.group_constraints)
+    iter_constraints = tuple(reg(None) for reg in props.iter_constraints)
 
     update_probe = process_flag(props.update_probe)
     update_object = process_flag(props.update_object)
@@ -70,7 +43,8 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     grouping = props.grouping or 64
 
     sim = SimulationState(
-        state=args['state'], noise_model=noise_model, regularizers=regularizers,
+        state=args['state'], noise_model=noise_model,
+        group_constraints=group_constraints, iter_constraints=iter_constraints,
         patterns=args['data'].patterns, pattern_mask=args['data'].pattern_mask,
         xp=xp, dtype=dtype
     )
@@ -127,7 +101,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
             assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
             assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-            sim = apply_regularizers_iter(sim)
+            sim = sim.apply_iter_constraints()
 
             if iter_update_positions:
                 if not position_solver:

@@ -38,9 +38,10 @@ engines:
      type: 'anscombe'
      bias: 1.0e-3
 
-   regularizers: [
+   group_constraints: [
      'clamp_object_amplitude'
    ]
+   iter_constraints: []
 
    solver:
      type: 'lsqml'

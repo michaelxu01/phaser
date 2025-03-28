@@ -51,12 +51,13 @@ engines:
 
      illum_reg_object: 50.0
 
-   regularizers:
+   group_constraints:
+     - type: limit_probe_support
+       max_angle: 26.0
+   iter_constraints:
      - type: layers
        sigma: 100.0
        weight: 0.4
-     - type: limit_probe_support
-       max_angle: 26.0
 
    update_probe: {after: 5}
    update_positions: {after: 10}

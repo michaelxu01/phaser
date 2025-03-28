@@ -53,12 +53,14 @@ engines:
 
      illum_reg_object: 50.0
 
-   regularizers:
-     - type: layers
-       sigma: 50.0
-       weight: 0.9
+   group_constraints:
      - type: limit_probe_support
        max_angle: 26.0
+   iter_constraints:
+     - type: layers
+       sigma: 100.0
+       weight: 0.4
+
    update_probe: {after: 5}
 
    save: {every: 10}

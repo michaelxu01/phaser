@@ -37,10 +37,10 @@ class AmplitudeNoiseModel(NoiseModel[None]):
         xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
         patterns = xp.maximum(exp_patterns, 0.0)
 
-        return (t.cast(float,
+        return ((
             2. * xp.sum(mask * (
                 xp.sqrt(patterns + self.offset) - xp.sqrt(model_intensity + self.offset)
-            )**2) / self.var),
+            )**2) / self.var).astype(exp_patterns.dtype),
             state
         )
 
@@ -95,10 +95,10 @@ class PoissonNoiseModel(NoiseModel[None]):
         patterns = xp.maximum(exp_patterns, 0.0) + self.offset
         intensity = model_intensity + self.offset
 
-        loss = t.cast(float, xp.sum(mask * xp.abs(
-            intensity - patterns + patterns * (xp.log(patterns) - xp.log(intensity))
+        loss = xp.sum(mask * xp.abs(
+            intensity + patterns * (xp.log(patterns) - xp.log(intensity) - 1.0)
             #patterns - (model_intensity + self.offset) * xp.log(patterns)
-        )))
+        )).astype(exp_patterns.dtype)
         return (loss, state)
 
     def calc_wave_update(

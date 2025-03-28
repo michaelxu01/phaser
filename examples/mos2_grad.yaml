@@ -38,17 +38,26 @@ engines:
    grouping: 256
 
    noise_model:
-     type: 'poisson'
+     type: 'amplitude'
 
    solvers:
      object:
        type: 'adam'
-       learning_rate: 1.0
+       learning_rate: 1.0e-2
+       nesterov: True
      probe:
        type: 'adam'
-       learning_rate: 1.0e-3
+       learning_rate: 5.0e-1
+       nesterov: True
 
    regularizers: []
+     #- type: obj_recip_l1
+     #  cost: 1.0e+2
+     #- type: obj_tv
+     #  cost: 5.0e+0
+
+   iter_constraints: []
+   group_constraints: []
 
    update_probe: {after: 5}
    #update_positions: {after: 30}
@@ -59,5 +68,3 @@ engines:
      images: [
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
      ]
-
-   #send_every_group: True

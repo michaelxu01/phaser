@@ -7,7 +7,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.hooks.solver import NoiseModel
-from phaser.utils.misc import create_sparse_groupings
+from phaser.utils.misc import create_sparse_groupings, jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
     fft2, ifft2, abs2, check_finite, at
@@ -17,7 +17,7 @@ from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.state import ReconsState
 from phaser.hooks import EngineArgs
-from phaser.hooks.solver import GradientSolver
+from phaser.hooks.solver import GradientSolver, CostRegularizer, GroupConstraint, IterConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.output import output_images, output_state
@@ -67,15 +67,43 @@ def process_solvers(
     )
 
 
-def select_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar],
-                group: t.Optional[NDArray[numpy.integer]] = None) -> t.Dict[ReconsVar, numpy.ndarray]:
-    # TODO more elegant way to do this?
-    getters = {
-        'probe': lambda sim: sim.probe.data,
-        'object': lambda sim: sim.object.data,
-        'scan': lambda sim: sim.scan[*group] if group is not None else sim.scan,
-    }
-    return {var: getters[var](state) for var in vars}
+_PATH_MAP: t.Dict[t.Tuple[str, ...], ReconsVar] = {
+    ('object', 'data'): 'object',
+    ('probe', 'data'): 'probe',
+    ('scan',): 'scan',
+}
+
+def extract_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar], group: t.Optional[NDArray[numpy.integer]] = None) -> t.Tuple[t.Dict[ReconsVar, t.Any], ReconsState]:
+    import jax.tree_util
+
+    d = {}
+
+    def f(path: t.Tuple[str, ...], val: t.Any):
+        if (var := _PATH_MAP.get(path)) and var in vars:
+            if var in _PER_ITER_VARS and group is not None:
+                d[var] = val[*group]
+            else:
+                d[var] = val
+            return None
+        return val
+
+    state = jax.tree_util.tree_map_with_path(f, state, is_leaf=lambda x: x is None)
+    return (d, state)
+
+def insert_vars(vars: t.Dict[ReconsVar, t.Any], state: ReconsState, group: t.Optional[NDArray[numpy.integer]] = None) -> ReconsState:
+    import jax.tree_util
+
+    def f(path: t.Tuple[str, ...], val: t.Any):
+        if (var := _PATH_MAP.get(path)):
+            if var in vars:
+                return vars[var]
+            if val is None:
+                raise ValueError(f"Missing value for var {var}")
+            if var in _PER_ITER_VARS and group is not None:
+                return val[*group]
+        return val
+
+    return jax.tree_util.tree_map_with_path(f, state, is_leaf=lambda x: x is None)
 
 
 def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -> ReconsState:
@@ -95,6 +123,31 @@ def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -
 
 def filter_vars(d: t.Dict[ReconsVar, t.Any], vars: t.AbstractSet[ReconsVar]) -> t.Dict[ReconsVar, t.Any]:
     return {k: v for (k, v) in d.items() if k in vars}
+
+
+@jax_dataclass
+class SolverStates:
+    noise_model_state: t.Any
+    group_solver_states: t.List[t.Any]
+    regularizer_states: t.List[t.Any]
+    group_constraint_states: t.List[t.Any]
+
+    @classmethod
+    def init_state(
+        cls, sim: ReconsState, xp: t.Any,
+        noise_model: NoiseModel,
+        group_solvers: t.Iterable[GradientSolver[t.Any]],
+        regularizers: t.Iterable[CostRegularizer[t.Any]],
+        group_constraints: t.Iterable[GroupConstraint[t.Any]],
+    ) -> t.Self:
+        noise_model_state = noise_model.init_state(sim)
+        group_solver_states = [solver.init_state(sim) for solver in group_solvers]
+        regularizer_states = [reg.init_state(sim) for reg in regularizers]
+        group_constraint_states = [reg.init_state(sim) for reg in group_constraints]
+
+        return cls(
+            noise_model_state, group_solver_states, regularizer_states, group_constraint_states
+        )
 
 
 def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
@@ -117,9 +170,12 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     pattern_mask = args['data'].pattern_mask
 
     noise_model = props.noise_model(None)
-    noise_model_state = noise_model.init_state(state)
 
     (all_vars, group_solvers, iter_solvers) = process_solvers(props)
+
+    regularizers = tuple(reg(None) for reg in props.regularizers)
+    group_constraints = tuple(reg(None) for reg in props.group_constraints)
+    iter_constraints = tuple(reg(None) for reg in props.iter_constraints)
 
     flags = {
         'probe': process_flag(props.update_probe),
@@ -147,10 +203,26 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         propagators = make_propagators(state)
 
         observer.init_solver(state, engine_i)
+
+        # runs rescaling
+        rescale_factors = []
+        for (group_i, group) in enumerate(groups):
+            group_rescale_factors = dry_run(state, group, propagators, patterns, xp=xp, dtype=dtype)
+            rescale_factors.append(group_rescale_factors)
+
+        rescale_factors = xp.concatenate(rescale_factors, axis=0)
+        rescale_factor = xp.mean(rescale_factors)
+
+        logger.info("Pre-calculated intensities")
+        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+        state.probe.data *= xp.sqrt(rescale_factor)
+        probe_int = xp.sum(abs2(state.probe.data))
+
         observer.start_solver()
 
-        iter_solver_states = [solver.init_state(state, xp) for solver in iter_solvers]
-        group_solver_states = [solver.init_state(state, xp) for solver in group_solvers]
+        solver_states = SolverStates.init_state(state, xp, noise_model, group_solvers, regularizers, group_constraints)
+        iter_solver_states = [solver.init_state(state) for solver in iter_solvers]
+        iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
 
         #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
         for i in range(1, props.niter+1):
@@ -161,14 +233,20 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             )
 
             # gradients for per-iteration solvers
-            iter_grads = tree_zeros_like(select_vars(state, iter_vars & _PER_ITER_VARS))
+            iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
 
             for (group_i, group) in enumerate(groups):
-                (state, loss, iter_grads, group_solver_states, noise_model_state) = run_group(
-                    state, group=group, vars=iter_vars, iter_grads=iter_grads, props=propagators,
-                    group_solvers=group_solvers, group_solver_states=group_solver_states,
+                (state, loss, iter_grads, solver_states) = run_group(
+                    state, group=group, vars=iter_vars,
+                    noise_model=noise_model,
+                    group_solvers=group_solvers,
+                    group_constraints=group_constraints,
+                    regularizers=regularizers,
+                    iter_grads=iter_grads,
+                    solver_states=solver_states,
+                    props=propagators,
                     patterns=patterns, pattern_mask=pattern_mask,
-                    noise_model=noise_model, noise_model_state=noise_model_state,
+                    probe_int=probe_int,
                     xp=xp, dtype=dtype
                 )
 
@@ -185,6 +263,11 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                     state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss
                 )
                 state = apply_update(state, update)
+
+            for (reg_i, reg) in enumerate(iter_constraints):
+                (state, iter_constraint_states[reg_i]) = reg.apply_iter(
+                    state, iter_constraint_states[reg_i]
+                )
 
             loss = float(numpy.mean(losses))
             observer.update_iteration(state, i, props.niter, loss)
@@ -204,35 +287,42 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
 @partial(
     jit,
-    static_argnames=('vars', 'xp', 'dtype', 'noise_model', 'group_solvers'),
-    donate_argnames=('state', 'iter_grads', 'group_solver_states', 'noise_model_state')
+    static_argnames=('vars', 'xp', 'dtype', 'noise_model', 'group_solvers', 'regularizers'),
+    donate_argnames=('state', 'iter_grads', 'solver_states'),
 )
 def run_group(
     state: ReconsState,
     group: NDArray[numpy.integer],
-    vars: t.AbstractSet[ReconsVar],
-    iter_grads: t.Dict[ReconsVar, t.Any],
+    vars: t.AbstractSet[ReconsVar], *,
+    noise_model: NoiseModel[t.Any],
     group_solvers: t.Sequence[GradientSolver[t.Any]],
-    group_solver_states: t.List[t.Any],
+    group_constraints: t.Sequence[GroupConstraint[t.Any]],
+    regularizers: t.Sequence[CostRegularizer[t.Any]],
+    iter_grads: t.Dict[ReconsVar, t.Any],
+    solver_states: SolverStates,
     props: t.Optional[NDArray[numpy.complexfloating]],
     patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
-    noise_model: NoiseModel[t.Any],
-    noise_model_state: t.Any,
+    probe_int: t.Union[float, numpy.floating],
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], t.List[t.Any], t.Any]:
+) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], SolverStates]:
     import jax
     xp = cast_array_module(xp)
 
-    ((loss, noise_model_state), grad) = jax.value_and_grad(run_model, has_aux=True)(
-        select_vars(state, vars, group), state,
+    ((loss, solver_states), grad) = jax.value_and_grad(run_model, has_aux=True)(
+        *extract_vars(state, vars, group),
         group=group, props=props, patterns=patterns, pattern_mask=pattern_mask,
-        noise_model=noise_model, noise_model_state=noise_model_state,
+        noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,
         xp=xp, dtype=dtype
     )
     # steepest descent direction
     grad = jax.tree.map(lambda v: -v.conj(), grad, is_leaf=lambda x: x is None)
+    for k in grad.keys():
+        if k == 'probe':
+            grad[k] /= group.shape[-1]
+        else:
+            grad[k] /= probe_int * group.shape[-1]
 
     # update iter grads at group
     iter_grads = jax.tree.map(lambda v1, v2: at(v1, tuple(group)).set(v2), iter_grads, filter_vars(grad, vars & _PER_ITER_VARS))
@@ -241,18 +331,23 @@ def run_group(
         solver_grads = filter_vars(grad, solver.params)
         if len(solver_grads) == 0:
             continue
-        (update, group_solver_states[sol_i]) = solver.update(
-            state, group_solver_states[sol_i], solver_grads, loss
+        (update, solver_states.group_solver_states[sol_i]) = solver.update(
+            state, solver_states.group_solver_states[sol_i], solver_grads, loss
         )
         state = apply_update(state, update)
 
-    return (state, loss, iter_grads, group_solver_states, noise_model_state)
+    for (reg_i, reg) in enumerate(group_constraints):
+        (state, solver_states.group_constraint_states[reg_i]) = reg.apply_group(
+            group, state, solver_states.group_constraint_states[reg_i]
+        )
+
+    return (state, loss, iter_grads, solver_states)
 
 
 @partial(
     jit,
-    static_argnames=('xp', 'dtype', 'noise_model'),
-    donate_argnames=('noise_model_state',),
+    static_argnames=('xp', 'dtype', 'noise_model', 'regularizers'),
+    donate_argnames=('solver_states',),
 )
 def run_model(
     vars: t.Dict[ReconsVar, t.Any],
@@ -262,16 +357,14 @@ def run_model(
     patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
     noise_model: NoiseModel[t.Any],
-    noise_model_state: t.Any,
+    regularizers: t.Sequence[CostRegularizer[t.Any]],
+    solver_states: SolverStates,
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[float, t.Any]:
+) -> t.Tuple[float, SolverStates]:
     # apply vars to simulation
-    if 'probe' in vars:
-        sim.probe.data = vars['probe']
-    if 'object' in vars:
-        sim.object.data = vars['object']
-    group_scan = vars.get('scan', sim.scan[*group])
+    sim = insert_vars(vars, sim, group)
+    group_scan = sim.scan
 
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
     probes = sim.probe.data
@@ -288,9 +381,48 @@ def run_model(
     model_wave = fft2(slice_forwards(props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=1)
     group_patterns = xp.array(patterns[*group])
-    # TODO: how to pass noise_model_state out?
-    (loss, noise_model_state) = noise_model.calc_loss(
-        model_wave, model_intensity, group_patterns, pattern_mask, noise_model_state
+
+    (loss, solver_states.noise_model_state) = noise_model.calc_loss(
+        model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state
     )
 
-    return (loss, noise_model_state)
+    for (reg_i, reg) in enumerate(regularizers):
+        (reg_loss, solver_states.regularizer_states[reg_i]) = reg.calc_loss_group(
+            group, sim, solver_states.regularizer_states[reg_i]
+        )
+        loss += reg_loss
+
+    return (loss, solver_states)
+
+
+# TODO: DRY
+@partial(
+    jit,
+    static_argnames=('xp', 'dtype'),
+)
+def dry_run(
+    sim: ReconsState,
+    group: NDArray[numpy.integer],
+    props: t.Optional[NDArray[numpy.complexfloating]],
+    patterns: NDArray[numpy.floating],
+    xp: t.Any,
+    dtype: t.Type[numpy.floating],
+) -> NDArray[numpy.floating]:
+    (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
+    probes = sim.probe.data
+    group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[*group], probes.shape[-2:])
+    group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[*group], probes.shape[-2:]))[:, None, ...]
+    probes = ifft2(fft2(probes) * group_subpx_filters)
+
+    def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
+        if prop is not None:
+            return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop)
+
+        return psi * group_obj[:, slice_i, None]
+
+    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    # sum over incoherent modes and over the pattern
+    model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
+    exp_intensity = xp.sum(xp.array(patterns[*group]), axis=(-2, -1))
+
+    return exp_intensity / model_intensity
