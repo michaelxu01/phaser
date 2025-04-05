@@ -1,0 +1,103 @@
+site_name: phaser Documentation
+repo_url: https://github.com/hexane360/phaser
+
+docs_dir: 'docs'
+site_dir: 'site'
+extra_css:
+  - style.css
+
+nav:
+  - Home: index.md
+  - 'Using phaser':
+    - using/starting.md
+    - using/plan.md
+    - using/engines.md
+    - using/conventions.md
+  - API:
+    - phaser.state: api/state.md
+
+theme:
+  name: material
+  font:
+    text: Open Sans
+    code: Source Code Pro
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  #palette:
+  #  primary: purple
+  #  accent: green
+  #features:
+  #  - navigation.tabs
+  #  - navigation.tabs.sticky
+  #  - navigation.expand
+  #  - navigation.indexes
+
+extra:
+  version:
+    provider: mike
+extra_javascript:
+  - javascript/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@4.0.0-beta.7/tex-mml-chtml.min.js
+
+markdown_extensions:
+  - admonition
+  - footnotes
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - markdown_include.include:
+      base_path: docs
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      #custom_templates: templates
+      handlers:
+        python:
+          paths: [.]
+          inventories:
+            # 3rd-party object inventories
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.scipy.org/doc/scipy/objects.inv 
+            - https://matplotlib.org/stable/objects.inv
+            - https://docs.h5py.org/en/latest/objects.inv
+          options:
+            docstring_section_style: "spacy"
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            show_if_no_docstring: true
+            show_root_heading: true
+            members_order: source
+            filters: ["!^_", "!^__(all|repr|str)__$", "!^(DType|Num)?[TUKV](_co(ntra)?)?$",]
+            inherited_members: false
+  - mike:
+      version_selector: true
+      canonical_version: latest
+     #alias_type: symlink
+
+watch:
+  - phaser/
+  - README.md

@@ -1,0 +1,40 @@
+name: Build & deploy documentation
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      GIT_COMMITTER_NAME: github-actions
+      GIT_COMMITTER_EMAIL: github-actions@github.com
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools build
+          pip install -e '.[docs]'
+      - name: Get version
+        id: version
+        # outputs project, version, and tag
+        run: python .github/scripts/get_versioninfo.py
+      - name: Fetch gh-pages branch
+        run: git fetch origin gh-pages --depth=1
+      - name: Deploy
+        run: mike deploy -u '${{ steps.version.outputs.version }}' dev --push
