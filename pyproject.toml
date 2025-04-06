@@ -12,9 +12,13 @@ description = "Weapon of choice for electron ptychographic reconstructions"
 readme = {file = "README.md", content-type = "text/markdown"}
 keywords = []
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
 
@@ -36,15 +40,17 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=6.2.4",
+    "pytest-cov>=3.0.0",
+    "coveragepy-lcov>=0.1.1",
 ]
-cuda = [
+cupy = [
     "cupy-wheel",
     "pynvml>=11.0.0",
 ]
 jax = [
     # 0.4.25 is last version supporting cuda 11.8, we need to support it.
     # tested on 0.4.25 & 0.5.1
-    "jax>=0.4.25,<0.5.2",  
+    "jax>=0.4.25,<0.5.2",
     "optax>=0.2.2",
 ]
 web = [
@@ -53,12 +59,24 @@ web = [
     "requests>=2.31.0",
     "aiostream>=0.6.4",
 ]
+docs = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.6.11",
+    "mkdocstrings[python]==0.29.1",
+    "markdown-include==0.8.1",
+    "mike==2.1.3",
+    "black>=25.1.0",
+]
 
-[tool.setuptools]
-packages = ["phaser"]
+[project.urls]
+Repository = "https://github.com/hexane360/phaser.git"
+Documentation = "https://hexane360.github.io/atomlib/"
 
 [project.scripts]
 phaser = "phaser.main:cli"
+
+[tool.setuptools]
+packages = ["phaser"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
