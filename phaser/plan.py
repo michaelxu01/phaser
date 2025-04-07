@@ -49,8 +49,8 @@ class EnginePlan(Dataclass, kw_only=True):
     calc_error: FlagLike = Flag(every=1)
     calc_error_fraction: float = 0.1
 
-    save: FlagLike = Flag(every=10)
-    save_images: FlagLike = Flag(every=10)
+    save: FlagLike = False
+    save_images: FlagLike = False
     save_options: SaveOptions = SaveOptions()
 
     send_every_group: bool = False
@@ -58,7 +58,7 @@ class EnginePlan(Dataclass, kw_only=True):
 
 class AmplitudeNoisePlan(Dataclass, kw_only=True):
     gaussian_variance: float = 0.1
-    eps: float = 1e-8
+    eps: float = 1.0e-3
     offset: float = 0.0
 
 
@@ -67,7 +67,7 @@ class AnscombeNoisePlan(AmplitudeNoisePlan, kw_only=True):
 
 
 class PoissonNoisePlan(AmplitudeNoisePlan, kw_only=True):
-    eps: float = 1.0
+    eps: float = 1.0e-3
 
 
 NoiseModelHook.known['amplitude'] = ('phaser.engines.common.noise_models:AmplitudeNoiseModel', AmplitudeNoisePlan)
@@ -112,7 +112,6 @@ class GradientEnginePlan(EnginePlan):
     regularizers: t.List[CostRegularizerHook]
     group_constraints: t.List[GroupConstraintHook]
     iter_constraints: t.List[IterConstraintHook]
-
 
 
 class SGDSolverPlan(Dataclass, kw_only=True):

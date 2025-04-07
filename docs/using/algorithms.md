@@ -1,4 +1,4 @@
-# Reconstruction engines
+# Algorithm details
 
 ## Theory of ptychography
 
@@ -64,6 +64,7 @@ P(I | I_{exp}) &= \prod_{\vec{k}} \frac{I(\vec{k})^{I_{exp}(\vec{k})} e^{-I(\vec
 \end{aligned}$$
 
 where at the last step we have applied Stirling's approximation. In practice, a small offset $\epsilon$ must be added to prevent divergences inside the logarithms.
+This epsilon can be rationalized as a minimum signal recognizable by the detector. Setting this value high (e.g. 0.1 $e^-$) has the effect of ignoring updates from weak-intensity areas.
 
 When counts are moderate, a variance stabilizing transform can be applied to Poisson distributed data to be approximately Gaussian with a constant variance, allowing the use of a least-squares estimator. This leads to the amplitude and Anscombe noise models. Given a transformation $x \mapsto 2 \sqrt{x + c}$, we can model the transformed variable as Gaussian with variance 1:
 
@@ -72,6 +73,7 @@ $$\begin{aligned}
 \end{aligned}$$
 
 $c = 0$ leads to the amplitude noise model, while $c = 3/8$ leads to the Anscombe noise model.
+The amplitude and Ascombe noise models have the benefit that additive Gaussian noise can be considered analytically, as discussed by Godard et al. [19].
 
 For the conventional engines, gradients of the loss functions are taken analytically:
 
@@ -81,6 +83,14 @@ $$\begin{aligned}
 \end{aligned}$$
 
 As noted by Leidl et al [18], these two gradients show significant differences in their spatial extent, with the Poisson gradient providing the largest updates at large scattering angles (where signals are weak).
+
+Using these gradients, an optimal step size can be calculated [12], and a total wavefunction update can be found as $\Delta \Psi(\vec{k}) = - \alpha \nabla \mathcal{L}(\Psi)$. For instance, for the amplitude/Anscome loss function:
+
+$$
+\Delta \Psi(\vec{k}) = \frac{\sqrt{I_{exp}(\vec{k}) + c}}{\epsilon + \sqrt{I(\vec{k}) + c}} \Psi(\vec{k}) - \Psi(\vec{k})
+$$
+
+In the amplitude noise model, this corresponds to the classic modulus constraint of the ePIE method.
 
 ## Detailed description of engines
 
@@ -138,21 +148,89 @@ iter_constraints:  # constraints, applied per iteration
     sigma: 50.0
 ```
 
-
 ### Conventional engines
 
 Along with the gradient descent engine, phaser implements two conventional ptychography algorithms, ePIE and LSQML. The key difference between the gradient descent engine and the conventional engines is that, in the context of multislice ptychography, the conventional engines form an estimate of the optimized wavefront $\Psi$ at the detector and on each layer. This optimized $\Psi$ is used while calculating the gradient of the previous step. In contrast, in the gradient descent engine, the gradients are all taken simultaneously, and a step is taken in the direciton of the gradient. 
 
 #### ePIE
 
-In the ePIE algorithm, the update step takes the form: 
+In the ePIE algorithm, we first use the noise model to compute a wavefront update $\chi(\vec{k})$ on the detector, and backwards propagate it to the exit plane of the sample. Then, at each slice, we split the wavefront update to the object slice and to the previous wavefront/probe:
 
-#####insert later
+$$\begin{aligned}
+\chi_{n}(\vec{r}) &= \mathcal{F}^{-1}(\chi(\vec{k})) \\
+\chi_{i-1} &= \frac{O_i^*(\vec{r})}{\max_{\vec{r}} \left| O_i(\vec{r}) \right|^2} \chi_i(\vec{r}) \\
+\Delta O_i &= \frac{P_i^*(\vec{r})}{\max_{\vec{r}} \left| \Psi_i(\vec{r}) \right|^2} \chi_i(\vec{r}) \\
+\end{aligned}$$
+
+Finally, we calculate the updates to the probe and object. Probe updates are averaged across the group/batch of positions, while object updates are summed across the group:
+
+$$\begin{aligned}
+P(\vec{r}) &\mathrel{+}= \beta_{probe} \frac{\sum_{k} \chi_{0,k}(\vec{r})}{N_k} \\
+O_i(\vec{r}) &\mathrel{+}= \beta_{object} \sum_{k} \Delta O_{i,k}(\vec{r})
+\end{aligned}$$
+
+This multislice generalization of ePIE (sometimes called 3PIE) was introduced by Maiden et al [8] and is further discussed by Tsai et al [11].
+We recognize $O^*(\vec{r})$ as the Wirtinger derivative $\frac{\partial}{\partial \tilde{z}}$ of $P O$ with respect to $P$, showing that single-slice ePIE can be considered a gradient descent method.
+For multislice, 3PIE diverges from pure gradient descent in that an update step is taken each slice, prior to the backpropagation of gradients to the previous slice.
+
+In `phaser`, the ePIE solver can be specified as follows:
+
+```yaml
+# inside engine
+type: 'conventional'
+noise_model: 'amplitude'  # for instance
+
+solver:
+  type: epie
+  # parameters, as described above
+  beta_object: 0.1
+  beta_probe: 0.1
+```
 
 #### LSQML
 
+The LSQML method is implemented as described in Odstrčil et al. [12]. In `phaser`, the LSQML solver can be specified as follows:
+
+```yaml
+# inside engine
+type: 'conventional'
+noise_model: 'amplitude'  # for instance
+
+solver:
+  type: lsqml
+  # scaling of probe and object updates
+  beta_object: 0.1
+  beta_probe: 0.1
+
+  # gamma in [12]. eq. 23
+  gamma: 1.0e-4
+
+  # delta_P and delta_O in [12] eq. 25
+  illum_reg_object: 1.0e-2
+  illum_reg_probe: 1.0e-2
+```
+
+#### Regularizations
+
 For the conventional engines, constraint-based regularizations are supported (`group_constraints` and `iter_constraints`) but not cost-based regularizations. 
 
+#### Position solving
+
+For the conventional engines, position solving is performed using the gradient of the loss with respect to a shift in probe position, scaled by the update step size. Two position solvers are supported, a steepest descent solver and a momentum-accelerated solver:
+
+```yaml
+type: 'conventional'
+solver: ...
+
+position_solver:
+  type: 'momentum'  # or 'steepest_descent'
+  # can specify a maximum step size, in realspace units
+  max_step_size: ~
+  # fraction of optimal step size to take
+  step_size: 1.0e-2
+  # momentum decay rate
+  momentum: 0.9
+```
 
 ## References
 

@@ -145,7 +145,7 @@ class ProgressState:
         return id(self)
 
     def __eq__(self, other: t.Any) -> bool:
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         xp = get_array_module(self.iters, other.iters)
         return (
