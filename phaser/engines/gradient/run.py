@@ -26,7 +26,7 @@ from ..common.simulation import GroupManager, stream_patterns, make_propagators,
 
 
 logger = logging.getLogger(__name__)
-_PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'scan'})
+_PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'positions'})
 
 
 def process_solvers(
@@ -71,7 +71,7 @@ def process_solvers(
 _PATH_MAP: t.Dict[t.Tuple[str, ...], ReconsVar] = {
     ('object', 'data'): 'object',
     ('probe', 'data'): 'probe',
-    ('scan',): 'scan',
+    ('positions',): 'positions',
 }
 
 def extract_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar], group: t.Optional[NDArray[numpy.integer]] = None) -> t.Tuple[t.Dict[ReconsVar, t.Any], ReconsState]:
@@ -112,12 +112,12 @@ def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -
         state.probe.data += update['probe']
     if 'object' in update:
         state.object.data += update['object']
-    if 'scan' in update:
-        xp = get_array_module(update['scan'])
+    if 'positions' in update:
+        xp = get_array_module(update['positions'])
         # subtract mean position update
-        update['scan'] -= xp.mean(update['scan'], tuple(range(update['scan'].ndim - 1)))
-        logger.info(f"Position update: mean {xp.mean(xp.linalg.norm(update['scan'], axis=-1))}")
-        state.scan += update['scan']
+        update['positions'] -= xp.mean(update['positions'], tuple(range(update['positions'].ndim - 1)))
+        logger.info(f"Position update: mean {xp.mean(xp.linalg.norm(update['positions'], axis=-1))}")
+        state.scan += update['positions']
 
     return state
 
@@ -182,7 +182,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     flags = {
         'probe': process_flag(props.update_probe),
         'object': process_flag(props.update_object),
-        'scan': process_flag(props.update_positions),
+        'positions': process_flag(props.update_positions),
     }
     save = process_flag(props.save)
     save_images = process_flag(props.save_images)
