@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 import typing as t
 
 import numpy
 import pane
 from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode
-from pane.annotations import ConvertAnnotation
+from pane.annotations import ConvertAnnotation, Condition, adjective_condition
+from pane.errors import ParseInterrupt, WrongTypeError
 from pane.util import pluralize, list_phrase
 
 if t.TYPE_CHECKING:
@@ -108,6 +110,101 @@ def flag_any_true(flag: t.Callable[['FlagArgs'], bool], niter: int) -> bool:
         return flag.val
     # assume flag will return true
     return True
+
+
+@dataclass(init=False, frozen=True)
+class IsVersion(ConvertAnnotation):
+    min: t.Optional[t.Tuple[int, ...]] = None
+    max: t.Optional[t.Tuple[int, ...]] = None
+
+    def __init__(self, *,
+                 min: t.Union[str, t.Tuple[int, ...], None] = None,
+                 max: t.Union[str, t.Tuple[int, ...], None] = None,
+                 exactly: t.Union[str, t.Tuple[int, ...], None] = None):
+        if exactly is not None:
+            if min is not None or max is not None:
+                raise TypeError("'exactly' cannot be specified with 'min' or 'max'")
+            min = max = _VersionConverter.parse_version(exactly)
+        if min is not None:
+            min = _VersionConverter.parse_version(min)
+        if max is not None:
+            max = _VersionConverter.parse_version(max)
+        object.__setattr__(self, 'min', min)
+        object.__setattr__(self, 'max', max)
+
+    def _converter(self, inner_type: t.Any, *,
+                   handlers: ConverterHandlers):
+        return _VersionConverter(inner_type, handlers, min=self.min, max=self.max)
+
+
+Version: t.TypeAlias = t.Annotated[str, IsVersion()]
+
+
+class _VersionConverter(Converter[t.Any]):
+    def __init__(self, inner_type: t.Any, handlers: ConverterHandlers,
+                 min: t.Optional[t.Tuple[int, ...]] = None,
+                 max: t.Optional[t.Tuple[int, ...]] = None):
+        self.inner = make_converter(inner_type, handlers)
+        self.min = min
+        self.max = max
+
+    def expected(self, plural: bool = False) -> str:
+        if self.min is not None and self.max is not None:
+            min_s = '.'.join(map(str, self.min))
+            max_s = '.'.join(map(str, self.max))
+            return f"{pluralize("version", plural)} between {min_s} and {max_s}"
+        elif self.min is not None:
+            min_s = '.'.join(map(str, self.min))
+            return f"{pluralize("version", plural)} at least {min_s}"
+        elif self.max is not None:
+            max_s = '.'.join(map(str, self.max))
+            return f"{pluralize("version", plural)} at most {max_s}"
+        else:
+            return f"version {pluralize("string", plural)}"
+
+    def into_data(self, val: t.Any) -> str:
+        return str(val)
+
+    @staticmethod
+    def parse_version(val: t.Union[str, t.Tuple[int, ...]]) -> t.Tuple[int, ...]:
+        def to_int(seg: t.Union[int, str]) -> int:
+            if isinstance(seg, int):
+                return seg
+            if not seg.isdigit():
+                raise ValueError()
+            return int(seg)
+
+        return tuple(map(to_int, val.split('.') if isinstance(val, str) else val))
+
+    def check_version(self, val: t.Tuple[int, ...]):
+        if self.min is not None and val < self.min:
+            raise ValueError(f"Version {'.'.join(map(str, val))} less than minimum supported version {'.'.join(map(str, self.min))}")
+        if self.max is not None and val > self.max:
+            raise ValueError(f"Version {'.'.join(map(str, val))} greater than maximum supported version {'.'.join(map(str, self.max))}")
+
+    def try_convert(self, val: t.Any) -> str:
+        s = self.inner.try_convert(val)
+        try:
+            version = self.parse_version(val)
+            self.check_version(version)
+        except ValueError:
+            raise ParseInterrupt()
+        return s
+
+    def collect_errors(self, val: t.Any) -> t.Optional[ErrorNode]:
+        try:
+            s = self.inner.try_convert(val)
+        except ParseInterrupt:
+            return WrongTypeError(self.expected(), val)
+        try:
+            version = self.parse_version(val)
+        except ValueError:
+            return WrongTypeError(self.expected(), val, info='Invalid version string')
+        try:
+            self.check_version(version)
+        except ValueError as e:
+            return WrongTypeError(self.expected(), val, info=e.args[0])
+        return None
 
 
 class _ReconsVarsConverter(Converter[t.FrozenSet[ReconsVar]]):

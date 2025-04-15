@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing as t
 
-from .types import Dataclass, Slices, BackendName, Flag, ReconsVars
+from .types import Dataclass, Slices, BackendName, Flag, ReconsVars, IsVersion
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PostInitHook, PostLoadHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
 from .hooks.solver import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
@@ -152,6 +152,9 @@ EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', Gradie
 
 
 class ReconsPlan(Dataclass, kw_only=True):
+    file_type: t.Literal['phaser_plan'] = 'phaser_plan'
+    version: t.Annotated[str, IsVersion(exactly="1.0")] = "1.0"
+
     name: str
 
     backend: t.Optional[BackendName] = None
