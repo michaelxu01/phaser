@@ -1,0 +1,23 @@
+{
+    "file_type": "pyMultislicer_metadata",
+    "name": "SiC-ErV_kh_-20focus_320mm",
+    "version": "2.0",
+    "raw_filename": "SiC-ErV_kh_-20focus_320mm_17.13_x44_y46_4DSTEM.raw",
+    "voltage": 200000.0,
+    "conv_angle": 18.9,
+    "defocus": 20.0e-9,
+    "diff_step": 1.1083125,
+    "scan_rotation": 0.0,
+    "scan_shape": [
+        44,
+        46
+    ],
+    "scan_fov": [
+        1.4607789440000002e-09,
+        1.5272094792000002e-09
+    ],
+    "scan_step": [
+        3.32e-11,
+        3.32e-11
+    ]
+}

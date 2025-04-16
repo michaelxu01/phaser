@@ -15,6 +15,7 @@ T = t.TypeVar('T')
 
 EXPECTED_PATH = Path(__file__).parent / 'expected'
 ACTUAL_PATH = Path(__file__).parent / 'actual'
+INPUT_FILES_PATH = Path(__file__).parent / 'input_files'
 OVERWRITE_EXPECTED = object()
 
 

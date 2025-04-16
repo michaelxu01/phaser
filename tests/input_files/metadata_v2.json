@@ -1,0 +1,35 @@
+{
+    "file_type": "empad_metadata",
+    "name": "acquisition_5_7.2Mx_17.9mrad_460mmcl_-20nmdefocus",
+    "version": "2.0",
+    "raw_filename": "scan_x128_y128.raw",
+    "orig_path": "/Volumes/sandisk/abinashk/SiCVanadium4H_Ptycho_Acq5",
+    "author": "Abinash",
+    "time": "2021-05-02T06:58:26.775565",
+    "time_unix": 1619953106.775565,
+    "bg_unix": 1619952260.597519,
+    "has_bg": true,
+    "voltage": 200000.0,
+    "conv_angle": 17.9,
+    "defocus": null,
+    "camera_length": 0.4575,
+    "diff_step": 0.7833333333333333,
+    "scan_rotation": 108.58148502391691e-10,
+    "scan_shape": [
+        128,
+        128
+    ],
+    "scan_fov": [
+        1.2435077703182981e-08,
+        1.2435077703182981e-08
+    ],
+    "scan_step": [
+        0.9714904455611704e-10,
+        0.9714904455611704e-10
+    ],
+    "exposure_time": 0.001,
+    "post_exposure_time": 0.0,
+    "beam_current": 30.0e-12,
+    "adu": 375.0,
+    "notes": null
+}
