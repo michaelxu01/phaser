@@ -47,7 +47,7 @@ def remove_linear_ramp(
         mask = mask.flatten()
 
     for idx in numpy.ndindex(data.shape[:-2]):
-        layer = data[*idx].astype(numpy.float64)
+        layer = data[tuple(idx)].astype(numpy.float64)
         p, residues, rank, singular = xp.linalg.lstsq(pts[mask], layer.flatten()[mask], rcond=None)
         output = at(output, idx).set((layer - (p @ pts.T).reshape(layer.shape)).astype(output.dtype))
 
@@ -134,7 +134,7 @@ def affine_transform(
     if offset is None:
         offset = 0.
     if output_shape is None:
-        output_shape = input.shape
+        output_shape = t.cast(t.Tuple[int, ...], input.shape)
     n_axes = len(output_shape)  # num axes to transform over
 
     with warnings.catch_warnings():
@@ -144,7 +144,7 @@ def affine_transform(
 
         for idx in numpy.ndindex(input.shape[:-n_axes]):  # TODO: parallelize this on CUDA?
             scipy.ndimage.affine_transform(
-                input[*idx], xp.array(matrix), offset=offset,
+                input[tuple(idx)], xp.array(matrix), offset=offset,
                 output_shape=output_shape, output=output[*idx],
                 order=order, mode=mode, cval=cval,
             )

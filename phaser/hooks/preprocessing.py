@@ -96,7 +96,7 @@ def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patter
     sum_pattern = xp.zeros(patterns.patterns.shape[-2:], dtype=patterns.patterns.dtype)
 
     for group in groups:
-        pats = xp.array(patterns.patterns[*group]) * xp.array(patterns.pattern_mask)
+        pats = xp.array(patterns.patterns[tuple(group)]) * xp.array(patterns.pattern_mask)
         sum_pattern += t.cast(NDArray[numpy.floating], xp.nansum(pats, axis=tuple(range(pats.ndim - 2))))
 
     mean_pattern = sum_pattern / math.prod(patterns.patterns.shape[:-2])
@@ -119,7 +119,7 @@ def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patter
         ), axes=(-2, -1)))
 
     for group in groups:
-        patterns.patterns[*group] = bilinear_shift(patterns.patterns[*group])
+        patterns.patterns[tuple(group)] = bilinear_shift(patterns.patterns[tuple(group)])
 
     # fftshift mask as well
     patterns.pattern_mask = bilinear_shift(patterns.pattern_mask)

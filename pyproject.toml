@@ -22,7 +22,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-requires-python = ">=3.11"  # mostly for unpack indexing arr[*group]. Can be bumped down by replacing with arr[tuple(group)]
+requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.22,<2.5",  # tested on 1.26, 2.2
     "scipy>=1.7.0,<1.18", # tested on 1.11, 1.15

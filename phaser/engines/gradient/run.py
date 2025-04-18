@@ -71,7 +71,7 @@ def process_solvers(
 _PATH_MAP: t.Dict[t.Tuple[str, ...], ReconsVar] = {
     ('object', 'data'): 'object',
     ('probe', 'data'): 'probe',
-    ('positions',): 'positions',
+    ('scan',): 'positions',
 }
 
 def extract_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar], group: t.Optional[NDArray[numpy.integer]] = None) -> t.Tuple[t.Dict[ReconsVar, t.Any], ReconsState]:
@@ -82,7 +82,7 @@ def extract_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar], group: t.Op
     def f(path: t.Tuple[str, ...], val: t.Any):
         if (var := _PATH_MAP.get(path)) and var in vars:
             if var in _PER_ITER_VARS and group is not None:
-                d[var] = val[*group]
+                d[var] = val[tuple(group)]
             else:
                 d[var] = val
             return None
@@ -101,7 +101,7 @@ def insert_vars(vars: t.Dict[ReconsVar, t.Any], state: ReconsState, group: t.Opt
             if val is None:
                 raise ValueError(f"Missing value for var {var}")
             if var in _PER_ITER_VARS and group is not None:
-                return val[*group]
+                return val[tuple(group)]
         return val
 
     return jax.tree_util.tree_map_with_path(f, state, is_leaf=lambda x: x is None)
@@ -239,7 +239,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             # TODO: preload these?
             #@partial(jax.profiler.annotate_function, name="load_group")
             def load_group(group: NDArray[numpy.int_]) -> NDArray[numpy.floating]:
-                arr = xp.array(patterns[*group])
+                arr = xp.array(patterns[tuple(group)])
                 return arr.block_until_ready()  # type: ignore
 
             iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
@@ -420,8 +420,8 @@ def dry_run(
 ) -> NDArray[numpy.floating]:
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
     probes = sim.probe.data
-    group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[*group], probes.shape[-2:])
-    group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[*group], probes.shape[-2:]))[:, None, ...]
+    group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[tuple(group)], probes.shape[-2:])
+    group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[tuple(group)], probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
@@ -433,6 +433,6 @@ def dry_run(
     model_wave = fft2(slice_forwards(props, probes, sim_slice))
     # sum over incoherent modes and over the pattern
     model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
-    exp_intensity = xp.sum(xp.array(patterns[*group]), axis=(-2, -1))
+    exp_intensity = xp.sum(xp.array(patterns[tuple(group)]), axis=(-2, -1))
 
     return exp_intensity / model_intensity

@@ -222,7 +222,7 @@ def lsqml_run(
     # sum over incoherent modes
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
     # experimental data
-    # group_patterns = xp.array(sim.patterns[*group])[:, None]
+    # group_patterns = xp.array(sim.patterns[tuple(group)])[:, None]
 
     errors = xp.sqrt(xp.nansum((model_intensity - group_patterns[:, None])**2, axis=(1, -1, -2))) if calc_error else None
 

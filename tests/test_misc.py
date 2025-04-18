@@ -27,7 +27,7 @@ def test_create_sparse_groupings():
     groupings = create_sparse_groupings(arr.shape, 128)
     assert groupings[0].shape == (3, 128)
     # make sure we can index
-    assert arr[*groupings[0]].shape == (128,)
+    assert arr[tuple(groupings[0])].shape == (128,)
 
 
 def test_create_compact_groupings():

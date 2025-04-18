@@ -52,13 +52,13 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
 
     wavelength = Electron(voltage).wavelength
 
-    a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
-    sampling = Sampling((128, 128), extent=(a, a))
-
     if not path.exists():
         raise ValueError(f"Couldn't find raw data at path {path}")
 
     patterns = numpy.fft.ifftshift(load_4d(path, scan_shape, memmap=True), axes=(-1, -2))
+
+    a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
+    sampling = Sampling(patterns.shape[-2:], extent=(a, a))
 
     mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
     mask[2:-2, 2:-2] = 1.

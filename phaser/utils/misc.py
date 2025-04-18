@@ -99,7 +99,7 @@ def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.f
     Randomly partition the indices of `shape` into groups of maximum size `grouping`.
 
     Returns a list of groups. Each group can be used to index an array `arr` of shape `shape`:
-    `arr[*group]`
+    `arr[tuple(group)]`
     """
     if isinstance(shape, int):
         shape = (shape,)
@@ -120,7 +120,7 @@ def create_compact_groupings(positions: NDArray[numpy.floating], max_grouping: i
     """
     Partition the indices of `positions` into groups of maximum size `max_grouping`, such that each group is spatially compact.
 
-    Returns a list of groups. Each group can be used to index `positions`: `positions[*group]`
+    Returns a list of groups. Each group can be used to index `positions`: `positions[tuple(group)]`
     """
     from scipy.spatial import KDTree
     from scipy.cluster.vq import kmeans2

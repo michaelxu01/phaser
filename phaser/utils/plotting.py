@@ -83,7 +83,7 @@ def plot_raw(raw: NDArray[numpy.floating],
         mask = numpy.ones(raw.shape[-2:], dtype=numpy.bool_)
 
     real_img = numpy.tensordot(raw, mask, axes=((-1, -2), (-1, -2)))
-    recip_img = raw[*idx]
+    recip_img = raw[tuple(idx)]
     vmin = float(numpy.nanquantile(raw, 0.001))  # used for lognorm
     vmax = float(numpy.nanquantile(raw, 0.999))
 

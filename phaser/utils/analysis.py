@@ -74,7 +74,7 @@ def align_object_to_ground_truth(
         raise ValueError("Error: Ground truth extent smaller than object extent")
     #print(f"max_shift: {max_shift:.3f} px ({max_shift * ground_truth_samp.sampling[0]:.3f} angstrom)")
 
-    shift = numpy.array(_cross_correlate(upsamp_obj[*crop], ground_truth[*crop], max_shift))
+    shift = numpy.array(_cross_correlate(upsamp_obj[tuple(crop)], ground_truth[tuple(crop)], max_shift))
 
     # shift ground truth to match experiment
     ground_truth_samp = ObjectSampling(
@@ -87,4 +87,4 @@ def align_object_to_ground_truth(
     upsamp_obj = object_sampling.resample(object_phase, ground_truth_samp, cval=0.)
     crop = ground_truth_samp.get_region_crop()
 
-    return upsamp_obj[:, *crop], ground_truth[*crop]
+    return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]

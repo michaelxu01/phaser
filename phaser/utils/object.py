@@ -452,7 +452,7 @@ class ObjectCutout(t.Generic[DTypeT]):
         out = xp.empty(self.shape, dtype=self.obj.dtype)
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            out[*idx] = self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], self.cutout_shape)]
+            out[tuple(idx)] = self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], self.cutout_shape)]
 
         return out
 
