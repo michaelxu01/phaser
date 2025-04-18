@@ -23,7 +23,7 @@ class InitPlan(Dataclass, kw_only=True):
     state: t.Optional[Path] = None
 
     scan: t.Union[EmptyDict, ScanHook, None] = None
-    probe: t.Optional[ProbeHook] = None
+    probe: t.Union[EmptyDict, ProbeHook, None] = None
     object: t.Optional[ObjectHook] = None  # ObjectHook('random')
 
 

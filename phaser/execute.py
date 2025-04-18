@@ -4,53 +4,13 @@ import time
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
 import pane
 
 from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling
 from phaser.utils.object import ObjectSampling
-from .hooks import Hook, ObjectHook
+from .hooks import Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook
-from .state import Patterns, ObjectState, ReconsState, PartialReconsState, IterState, ProgressState
-
-
-_MISSING = object()
-
-
-def merge(left: t.Any, right: t.Any) -> t.Any:
-    print(f"merging {left} and {right}")
-    def _as_dict(val) -> t.Optional[dict]:
-        if isinstance(val, dict):
-            return val
-        if dataclasses.is_dataclass(val):
-            return dataclasses.asdict(val)  # type: ignore
-        if isinstance(val, pane.PaneBase):
-            return val.dict()
-        return None
-
-    if left is _MISSING or right is _MISSING:
-        out = left if right is _MISSING else right
-        print(f"out: {out} (as single)")
-        return out
-
-    if isinstance(left, Hook) and isinstance(right, Hook):
-        if left.ref != right.ref:
-            return right
-        d = merge(left.props or {}, right.props or {})
-        d['type'] = right.type if right.type is not None else right.ref
-        out = pane.from_data(d, right.__class__)
-        print(f"out: {out} (as hook)")
-        return out
-
-    if (left_d := _as_dict(left)) is not None and (right_d := _as_dict(right)) is not None:
-        keys = set(left_d.keys()) | set(right_d.keys())
-        d = {k: merge(left_d.get(k, _MISSING), right_d.get(k, _MISSING)) for k in keys}
-        print(f"out: {d} (as dict)")
-        return d
-
-    out = left if right is _MISSING else right
-    print(f"out: {out}")
-    return out
+from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState
 
 
 class Observer:
@@ -116,7 +76,7 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
     if observer is None:
         observer = Observer()
 
-    patterns, state = initialize_reconstruction(plan, xp, observer)
+    patterns, state = initialize_reconstruction(plan, xp)
     dtype = patterns.patterns.dtype
 
     for (engine_i, engine) in enumerate(plan.engines):
@@ -136,19 +96,11 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
     logging.info("Reconstruction finished!")
 
 
-def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -> t.Tuple[Patterns, ReconsState]:
-    xp = cast_array_module(xp)
-
-    logging.basicConfig(level=logging.INFO)
-
-    logging.info("Executing plan...")
-
-    seed = None
+def load_raw_data(
+    plan: ReconsPlan, xp: t.Any, seed: t.Any = None,
+    init_state: t.Union[ReconsState, PartialReconsState, None] = None
+) -> RawData:
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
-    logging.info(f"dtype: {dtype} array backend: {xp.__name__}")
-    if xp_is_jax(xp):
-        import jax
-        logging.info(f"jax backend: {jax.default_backend()} devices: {jax.devices()}")
 
     raw_data = plan.raw_data(None)
 
@@ -156,29 +108,32 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     if wavelength is None:
         raise ValueError("`wavelength` must be specified by raw_data or manually")
 
-    # merge raw data hooks with plan hooks
-    init_state = PartialReconsState.read_hdf5(plan.init.state) if plan.init.state is not None else PartialReconsState()
+    if init_state is None:
+        init_state = PartialReconsState()
 
-    if init_state.wavelength is not None:
-        if not numpy.isclose(init_state.wavelength, wavelength):
-            logging.warning(f"Wavelength of reconstruction ('{wavelength:.3e}') doesn't match wavelength " \
-                             "of previous state ('{init_state.wavelength:.3e}')")
+    if init_state.wavelength is not None and not numpy.isclose(init_state.wavelength, wavelength):
+        logging.warning(f"Wavelength of reconstruction ({wavelength:.2e}) doesn't match wavelength " \
+                        f"of previous state ({init_state.wavelength:.2e})")
 
     raw_data['scan_hook'] = merge(
         pane.from_data(t.cast(dict, raw_data['scan_hook']), ScanHook) if raw_data['scan_hook'] is not None else None,
-        _MISSING if plan.init.scan is None else plan.init.scan
+        _MISSING if plan.init.scan in (None, {}) else plan.init.scan
     )
     raw_data['probe_hook'] = merge(
         pane.from_data(t.cast(dict, raw_data['probe_hook']), ProbeHook) if raw_data['probe_hook'] is not None else None,
-        _MISSING if plan.init.probe is None else plan.init.probe
+        _MISSING if plan.init.probe in (None, {}) else plan.init.probe
     )
-    print(f"scan_hook: {raw_data['scan_hook']}")
-    print(f"probe_hook: {raw_data['probe_hook']}")
+    #print(f"scan_hook: {raw_data['scan_hook']}")
+    #print(f"probe_hook: {raw_data['probe_hook']}")
 
     if raw_data['scan_hook'] is None and init_state.scan is None:
         raise ValueError("`scan` must be specified by raw data, previous state, or manually in `init.scan`")
     if raw_data['probe_hook'] is None and init_state.probe is None:
         raise ValueError("`probe` must be specified by raw data, previous state, or manually in `init.probe`")
+    if raw_data['scan_hook'] == {}:
+        raise ValueError("Manual `init.scan` specified to override initial state, but scan was not provided by the raw data")
+    if raw_data['probe_hook'] == {}:
+        raise ValueError("Manual `init.probe` specified to override initial state, but probe was not provided by the raw data")
 
     raw_data['wavelength'] = wavelength
     raw_data['seed'] = seed
@@ -197,9 +152,38 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     if isinstance(raw_data['patterns'], numpy.memmap):
         raw_data['patterns'] = raw_data['patterns'].copy()
 
-    data = Patterns(raw_data['patterns'], raw_data['mask'])
+    return raw_data
 
+
+def initialize_reconstruction(
+    plan: ReconsPlan, xp: t.Any, seed: t.Any = None,
+    init_state: t.Union[ReconsState, PartialReconsState, None] = None
+) -> t.Tuple[Patterns, ReconsState]:
+    xp = cast_array_module(xp)
+
+    logging.basicConfig(level=logging.INFO)
+
+    logging.info("Executing plan...")
+
+    dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
+    logging.info(f"dtype: {dtype} array backend: {xp.__name__}")
+    if xp_is_jax(xp):
+        import jax
+        logging.info(f"jax backend: {jax.default_backend()} devices: {jax.devices()}")
+
+    if init_state is None:
+        if plan.init.state is not None:
+            path = plan.init.state.expanduser()
+            logging.info(f"Loading inital state from '{path}'...")
+            init_state = PartialReconsState.read_hdf5(path)
+        else:
+            init_state = PartialReconsState()
+
+    raw_data = load_raw_data(plan, xp, seed, init_state=init_state)
+
+    data = Patterns(raw_data['patterns'], raw_data['mask'])
     sampling = raw_data['sampling']
+    wavelength = t.cast(float, raw_data['wavelength'])
 
     if init_state.probe is not None and plan.init.probe is None:
         logging.info("Re-using probe from initial state...")
@@ -260,7 +244,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
 
     if avg_pattern_intensity < 5.0:
         logging.warning(
-            f"Mean pattern intensity very low ({avg_pattern_intensity} particles). "
+            f"Mean pattern intensity is very low ({avg_pattern_intensity} particles). "
             "Ensure that it is being scaled correctly to units of electrons/photons. "
             "For simulated data, use the 'scale' or 'poisson' preprocessing"
         )
@@ -318,3 +302,33 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
 
     return patterns, state
+
+
+_MISSING = object()
+
+
+def merge(left: t.Any, right: t.Any) -> t.Any:
+    def _as_dict(val) -> t.Optional[dict]:
+        if isinstance(val, dict):
+            return val
+        if dataclasses.is_dataclass(val):
+            return dataclasses.asdict(val)  # type: ignore
+        if isinstance(val, pane.PaneBase):
+            return val.dict(set_only=True)
+        return None
+
+    if left is _MISSING or right is _MISSING:
+        return left if right is _MISSING else right
+
+    if isinstance(left, Hook) and isinstance(right, Hook):
+        if left.ref != right.ref:
+            return right
+        d = merge(left.props or {}, right.props or {})
+        d['type'] = right.type if right.type is not None else right.ref
+        return pane.from_data(d, right.__class__)
+
+    if (left_d := _as_dict(left)) is not None and (right_d := _as_dict(right)) is not None:
+        keys = set(left_d.keys()) | set(right_d.keys())
+        return {k: merge(left_d.get(k, _MISSING), right_d.get(k, _MISSING)) for k in keys}
+
+    return left if right is _MISSING else right
