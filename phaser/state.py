@@ -3,7 +3,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import Sampling, to_numpy, get_array_module
+from phaser.utils.num import Sampling, to_numpy, get_array_module, Float
 from phaser.utils.misc import jax_dataclass
 from phaser.utils.object import ObjectSampling
 
@@ -156,7 +156,7 @@ class ProgressState:
 @jax_dataclass(kw_only=True, static_fields=('progress',))
 class ReconsState:
     iter: IterState
-    wavelength: float
+    wavelength: Float
 
     probe: ProbeState
     object: ObjectState
@@ -200,8 +200,8 @@ class ReconsState:
 
 @jax_dataclass(kw_only=True, static_fields=('progress',))
 class PartialReconsState:
-    iter: IterState
-    wavelength: float
+    iter: t.Optional[IterState] = None
+    wavelength: t.Optional[Float] = None
 
     probe: t.Optional[ProbeState] = None
     object: t.Optional[ObjectState] = None
@@ -211,16 +211,16 @@ class PartialReconsState:
 
     def to_numpy(self) -> t.Self:
         return self.__class__(
-            iter=self.iter.to_numpy(),
+            iter=self.iter.to_numpy() if self.iter is not None else None,
             probe=self.probe.to_numpy() if self.probe is not None else None,
             object=self.object.to_numpy() if self.object is not None else None,
             scan=to_numpy(self.scan) if self.scan is not None else None,
             progress=self.progress.to_numpy() if self.progress is not None else None,
-            wavelength=float(self.wavelength),
+            wavelength=float(self.wavelength) if self.wavelength is not None else None,
         )
 
     def to_complete(self) -> ReconsState:
-        missing = tuple(filter(lambda k: getattr(self, k) is None, ('probe', 'object', 'scan')))
+        missing = tuple(filter(lambda k: getattr(self, k) is None, ('probe', 'object', 'scan', 'wavelength')))
         if len(missing):
             raise ValueError(f"ReconsState missing {', '.join(map(repr, missing))}")
 
@@ -228,7 +228,7 @@ class PartialReconsState:
         iter = self.iter if self.iter is not None else IterState.empty()
 
         return ReconsState(
-            wavelength=self.wavelength,
+            wavelength=t.cast(Float, self.wavelength),
             probe=t.cast(ProbeState, self.probe),
             object=t.cast(ObjectState, self.object),
             scan=t.cast(NDArray[numpy.floating], self.scan),

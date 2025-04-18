@@ -1,14 +1,56 @@
+import dataclasses
 import logging
 import time
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
+import pane
 
 from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling
 from phaser.utils.object import ObjectSampling
-from .plan import GradientEnginePlan, ReconsPlan, EnginePlan
+from .hooks import Hook, ObjectHook
+from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook
 from .state import Patterns, ObjectState, ReconsState, PartialReconsState, IterState, ProgressState
+
+
+_MISSING = object()
+
+
+def merge(left: t.Any, right: t.Any) -> t.Any:
+    print(f"merging {left} and {right}")
+    def _as_dict(val) -> t.Optional[dict]:
+        if isinstance(val, dict):
+            return val
+        if dataclasses.is_dataclass(val):
+            return dataclasses.asdict(val)  # type: ignore
+        if isinstance(val, pane.PaneBase):
+            return val.dict()
+        return None
+
+    if left is _MISSING or right is _MISSING:
+        out = left if right is _MISSING else right
+        print(f"out: {out} (as single)")
+        return out
+
+    if isinstance(left, Hook) and isinstance(right, Hook):
+        if left.ref != right.ref:
+            return right
+        d = merge(left.props or {}, right.props or {})
+        d['type'] = right.type if right.type is not None else right.ref
+        out = pane.from_data(d, right.__class__)
+        print(f"out: {out} (as hook)")
+        return out
+
+    if (left_d := _as_dict(left)) is not None and (right_d := _as_dict(right)) is not None:
+        keys = set(left_d.keys()) | set(right_d.keys())
+        d = {k: merge(left_d.get(k, _MISSING), right_d.get(k, _MISSING)) for k in keys}
+        print(f"out: {d} (as dict)")
+        return d
+
+    out = left if right is _MISSING else right
+    print(f"out: {out}")
+    return out
 
 
 class Observer:
@@ -114,6 +156,30 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     if wavelength is None:
         raise ValueError("`wavelength` must be specified by raw_data or manually")
 
+    # merge raw data hooks with plan hooks
+    init_state = PartialReconsState.read_hdf5(plan.init.state) if plan.init.state is not None else PartialReconsState()
+
+    if init_state.wavelength is not None:
+        if not numpy.isclose(init_state.wavelength, wavelength):
+            logging.warning(f"Wavelength of reconstruction ('{wavelength:.3e}') doesn't match wavelength " \
+                             "of previous state ('{init_state.wavelength:.3e}')")
+
+    raw_data['scan_hook'] = merge(
+        pane.from_data(t.cast(dict, raw_data['scan_hook']), ScanHook) if raw_data['scan_hook'] is not None else None,
+        _MISSING if plan.init.scan is None else plan.init.scan
+    )
+    raw_data['probe_hook'] = merge(
+        pane.from_data(t.cast(dict, raw_data['probe_hook']), ProbeHook) if raw_data['probe_hook'] is not None else None,
+        _MISSING if plan.init.probe is None else plan.init.probe
+    )
+    print(f"scan_hook: {raw_data['scan_hook']}")
+    print(f"probe_hook: {raw_data['probe_hook']}")
+
+    if raw_data['scan_hook'] is None and init_state.scan is None:
+        raise ValueError("`scan` must be specified by raw data, previous state, or manually in `init.scan`")
+    if raw_data['probe_hook'] is None and init_state.probe is None:
+        raise ValueError("`probe` must be specified by raw data, previous state, or manually in `init.probe`")
+
     raw_data['wavelength'] = wavelength
     raw_data['seed'] = seed
 
@@ -135,31 +201,40 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
 
     sampling = raw_data['sampling']
 
-    logging.info("Initializing probe...")
-    probe = plan.init_probe({'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp})
+    if init_state.probe is not None and plan.init.probe is None:
+        logging.info("Re-using probe from initial state...")
+        probe = init_state.probe
+    else:
+        logging.info("Initializing probe...")
+        probe = t.cast(ProbeHook, raw_data['probe_hook'])(
+            {'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp}
+        )
     if probe.data.ndim == 2:
         probe.data = probe.data.reshape((1, *probe.data.shape))
 
-    logging.info("Initializing scan...")
-
-    if plan.init_scan is None:
-        if raw_data['scan'] is None:
-            raise ValueError("`init_scan` must be specified by raw_data or manually")
-        scan = xp.array(raw_data['scan']).astype(dtype)
+    if init_state.scan is not None and plan.init.scan is None:
+        logging.info("Re-using scan from initial state...")
+        scan = init_state.scan
     else:
-        scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
-
+        logging.info("Initializing scan...")
+        scan = t.cast(ScanHook, raw_data['scan_hook'])(
+            {'dtype': dtype, 'seed': seed, 'xp': xp}
+        )
     if scan.shape[:-1] != data.patterns.shape[:-2]:
         raise ValueError(f"Scan shape {scan.shape[:-1]} doesn't match patterns shape {data.patterns.shape[:-2]}!")
 
     # TODO: magic numbers
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
-    logging.info("Initializing object...")
-    obj = plan.init_object({
-        'sampling': obj_sampling, 'slices': plan.slices, 'wavelength': wavelength,
-        'dtype': dtype, 'seed': seed, 'xp': xp
-    })
+    if init_state.object is not None and plan.init.object is None:
+        logging.info("Re-using object from initial state...")
+        obj = init_state.object
+    else:
+        logging.info("Initializing object...")
+        obj = (plan.init.object or pane.from_data('random', ObjectHook))({
+            'sampling': obj_sampling, 'slices': plan.slices, 'wavelength': wavelength,
+            'dtype': dtype, 'seed': seed, 'xp': xp
+        })
     if obj.data.ndim == 2:
         obj.data = obj.data.reshape((1, *obj.data.shape))
         obj.thicknesses = numpy.array([], dtype=dtype)

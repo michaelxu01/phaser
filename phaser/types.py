@@ -3,7 +3,7 @@ import typing as t
 
 import numpy
 import pane
-from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode
+from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode, LiteralConverter
 from pane.annotations import ConvertAnnotation, Condition, adjective_condition
 from pane.errors import ParseInterrupt, WrongTypeError
 from pane.util import pluralize, list_phrase
@@ -13,9 +13,36 @@ if t.TYPE_CHECKING:
     from phaser.plan import FlagLike
 
 
+class _EmptyDictAnnotation(ConvertAnnotation, Converter[t.Dict[t.NoReturn, t.NoReturn]]):
+    def _converter(self, inner_type: t.Any, *, handlers: ConverterHandlers):
+        return self
+
+    def __eq__(self, other):
+        return self.__class__ is other.__class__
+
+    def __hash__(self) -> int:
+        return hash(self.__class__.__name__)
+
+    def expected(self, plural: bool = False) -> str:
+        return pluralize("empty dict", plural, article='an')
+
+    def try_convert(self, val: t.Any) -> t.Dict[t.NoReturn, t.NoReturn]:
+        if isinstance(val, (dict, t.Mapping)) and len(val) == 0:
+            return {}
+        raise ParseInterrupt()
+
+    def collect_errors(self, val: t.Any) -> t.Optional[WrongTypeError]:
+        if isinstance(val, dict) and len(val) == 0:
+            return None
+        return WrongTypeError(self.expected(), val)
+
+
 class _ReconsVarsAnnotation(ConvertAnnotation):
     def _converter(self, inner_type: t.Any, *, handlers: ConverterHandlers):
         return _ReconsVarsConverter(inner_type, handlers)
+
+    def __eq__(self, other):
+        return self.__class__ is other.__class__
 
     def __hash__(self) -> int:
         return hash(self.__class__.__name__)
@@ -25,6 +52,7 @@ BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
 ReconsVar: t.TypeAlias = t.Literal['object', 'probe', 'positions']
 
 ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotation()]
+EmptyDict: t.TypeAlias = t.Annotated[t.Dict[t.NoReturn, t.NoReturn], _EmptyDictAnnotation()]
 
 
 class Cancelled(BaseException):

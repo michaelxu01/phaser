@@ -4,6 +4,7 @@ import abc
 import importlib
 import typing as t
 
+import pane
 from pane.convert import ConverterHandlers, DataType
 from pane.converters import Converter, make_converter
 from pane.errors import ErrorNode, WrongTypeError, ParseInterrupt, ProductErrorNode
@@ -15,7 +16,7 @@ class Hook(t.Generic[T, U], abc.ABC):
     known: t.ClassVar[t.Dict[str, t.Tuple[str, type]]] = {}
 
     def __init__(
-            self, ref: str, props: t.Optional[t.Any] = None, type: t.Optional[str] = None,
+        self, ref: str, props: t.Optional[t.Any] = None, type: t.Optional[str] = None,
     ):
         self.ref: str = ref
         self.type: t.Optional[str] = type
@@ -52,6 +53,9 @@ class Hook(t.Generic[T, U], abc.ABC):
 
     def __call__(self, args: T) -> U:
         return self.resolve()(args, props=self.props if self.props is not None else {})
+
+    def __getitem__(self, key: t.Any) -> t.Any:
+        return (self.props or {})[key]
 
     def __repr__(self) -> str:
         if self.props is not None:

@@ -22,16 +22,17 @@ class RawData(t.TypedDict):
     mask: NDArray[numpy.floating]
     sampling: 'Sampling'
     wavelength: t.Optional[float]
-    scan: t.Optional[NDArray[numpy.floating]]
-    probe_options: t.Any
+    scan_hook: t.Union[t.Dict[str, t.Any], None]
+    probe_hook: t.Union[t.Dict[str, t.Any], None]
     seed: t.Optional[object]
 
 
 class LoadEmpadProps(Dataclass):
     path: Path
 
-    diff_step: float
-    kv: float
+    diff_step: t.Optional[float] = None
+    kv: t.Optional[float] = None
+    adu: t.Optional[float] = None
 
 
 class RawDataHook(Hook[None, RawData]):
@@ -49,8 +50,8 @@ class ProbeHookArgs(t.TypedDict):
 
 
 class FocusedProbeProps(Dataclass):
-    defocus: float  # defocus, + is overfocus [A]
-    conv_angle: float  # semiconvergence angle [mrad]
+    defocus: t.Optional[float] = None  # defocus, + is overfocus [A]
+    conv_angle: t.Optional[float] = None  # semiconvergence angle [mrad]
 
 
 class ProbeHook(Hook[ProbeHookArgs, 'ProbeState']):
@@ -85,9 +86,9 @@ class ScanHookArgs(t.TypedDict):
 
 
 class RasterScanProps(Dataclass):
-    shape: t.Tuple[int, int]  # ny, nx (total shape)
-    step_size: float          # A
-    rotation: float = 0.0     # degrees CCW
+    shape: t.Optional[t.Tuple[int, int]] = None  # ny, nx (total shape)
+    step_size: t.Union[None, float, t.Tuple[float, float]] = None  # A
+    rotation: t.Optional[float] = None     # degrees CCW
     affine: t.Optional[t.Tuple[t.Tuple[float, float], t.Tuple[float, float]]] = None
 
 

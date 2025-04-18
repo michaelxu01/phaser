@@ -5,11 +5,12 @@ import typing as t
 
 import numpy
 from numpy.typing import NDArray
+import pane
 from pane import field
 from pane.annotations import shape
 import pane.io
 
-from phaser.types import Dataclass, IsVersion
+from phaser.types import IsVersion
 
 
 def _get_dir(f: pane.io.FileOrPath) -> t.Optional[Path]:
@@ -23,7 +24,7 @@ def _get_dir(f: pane.io.FileOrPath) -> t.Optional[Path]:
     return path.parent if path.exists() else None
 
 
-class EmpadMetadata(Dataclass, kw_only=True, allow_extra=True):
+class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True):
     file_type: t.Literal['pyMultislicer_metadata', 'empad_metadata'] = 'empad_metadata'
 
     @classmethod
@@ -42,12 +43,14 @@ class EmpadMetadata(Dataclass, kw_only=True, allow_extra=True):
     version: t.Annotated[str, IsVersion(exactly="2.0")] = "2.0"
     """Metadata version"""
 
-    raw_filename: t.Optional[str]
-    """Raw 4DSTEM data filename."""
+    raw_filename: str
+    """Raw 4DSTEM data filename, relative to metadata location."""
 
     orig_path: t.Optional[Path] = None
     """Original path to experimental folder."""
+
     path: t.Optional[Path] = field(init=False, exclude=True)
+    """Current path to experimental folder (based on metadata loading)"""
 
     author: t.Optional[str] = None
     """Author of dataset"""

@@ -91,7 +91,7 @@ def hdf5_read_state(file: HdfLike) -> PartialReconsState:
     if _parse_version(version) > (0, 1):
         raise ValueError(f"While reading file '{file.filename}':\nUnsupported file version '{version}'. Maximum supported version is '0.1'.")
 
-    wavelength = _hdf5_read_scalar(file, 'wavelength', numpy.float64)
+    wavelength = _hdf5_read_scalar(file, 'wavelength', numpy.float64) if 'wavelength' in file else None
 
     probe = hdf5_read_probe_state(_assert_group(file['probe'])) if 'probe' in file else None
     obj = hdf5_read_object_state(_assert_group(file['object'])) if 'object' in file else None

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 import typing as t
 
-from .types import Dataclass, Slices, BackendName, Flag, ReconsVars, IsVersion
+from .types import Dataclass, Slices, BackendName, Flag, ReconsVars, IsVersion, EmptyDict
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PostInitHook, PostLoadHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
 from .hooks.solver import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
@@ -16,6 +17,14 @@ SaveType: t.TypeAlias = t.Literal[
     'object_phase_stack', 'object_phase_sum',
     'object_mag_stack', 'object_mag_sum',
 ]
+
+
+class InitPlan(Dataclass, kw_only=True):
+    state: t.Optional[Path] = None
+
+    scan: t.Union[EmptyDict, ScanHook, None] = None
+    probe: t.Optional[ProbeHook] = None
+    object: t.Optional[ObjectHook] = None  # ObjectHook('random')
 
 
 class SaveOptions(Dataclass, kw_only=True):
@@ -166,9 +175,7 @@ class ReconsPlan(Dataclass, kw_only=True):
 
     post_load: t.Sequence[PostLoadHook] = ()
 
-    init_probe: ProbeHook
-    init_object: ObjectHook
-    init_scan: ScanHook
+    init: InitPlan = InitPlan()
 
     post_init: t.Sequence[PostInitHook] = ()
 
@@ -176,3 +183,5 @@ class ReconsPlan(Dataclass, kw_only=True):
 
     engines: t.List[EngineHook]
     #engines: t.List[t.Annotated[t.Union[ConventionalEngine, GradientEngine], Tagged('type')]]
+
+
