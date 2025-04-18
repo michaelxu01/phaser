@@ -5,27 +5,26 @@ backend: cupy
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
-  diff_step: 1.0  # mrad/px
-  kv: 120.        # keV
+  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0.json"
 
 post_load:
  - type: poisson
    scale: 1.0e+6
 
-# initialization
+# manual initialization
 
-init_probe:
-  type: 'focused'
-  conv_angle: 25  # mrad
-  defocus: 300    # angstrom
+init:
+  probe:
+    type: 'focused'
+    conv_angle: 25  # mrad
+    defocus: 300    # angstrom
 
-init_object: 'random'
+  object: 'random'
 
-init_scan:
-  type: 'raster'
-  shape: [64, 64] # ny, nx
-  step_size: 0.6  # angstrom
+  scan:
+    type: 'raster'
+    shape: [64, 64] # ny, nx
+    step_size: 0.6  # angstrom
 
 # for each reconstruction engine
 engines:

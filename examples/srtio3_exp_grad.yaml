@@ -56,7 +56,7 @@ engines:
        type: 'sgd'
        learning_rate: 4.0e-4
        momentum: 0.9
-     scan:
+     positions:
        type: 'sgd'
        learning_rate: 1.0e-1
        momentum: 0.99

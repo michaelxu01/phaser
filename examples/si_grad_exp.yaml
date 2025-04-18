@@ -1,0 +1,133 @@
+---
+name: "si_grad_exp"
+backend: jax
+
+# raw data source
+raw_data:
+  type: empad
+  path: "~/raw-ptycho/Si-20230920/acq10_20over/acq10_20over.json"
+
+post_load:
+ - type: crop_data
+   crop: [50, -50, 50, -50]
+ - type: scale
+   scale: 0.0017301038
+
+slices:
+  n: 10
+  total_thickness: 200
+
+post_init:
+  - drop_nans
+  - diffraction_align
+
+# for each reconstruction engine
+engines:
+   # how to transition from previous state to current reconstruction state
+   # how to reconstruct
+   # how to output/save
+ - type: 'gradient'
+   probe_modes: 4
+   bwlim_frac: 0.8
+
+   niter: 50
+   grouping: 128
+
+   noise_model:
+     type: anscombe
+     eps: 1.0e-8
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 1.0e-3
+       nesterov: True
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-1
+       nesterov: True
+     positions:
+       type: 'sgd'
+       learning_rate: 1.0
+       momentum: 0.99
+       nesterov: True
+
+   regularizers:
+     - type: obj_l2
+       cost: 100.0
+     - type: obj_tikh
+       cost: 2.0
+     - type: layers_tikh
+       cost: 5.0e+3
+     #- type: probe_recip_tv
+     #  cost: 10.0
+
+   group_constraints: []
+   iter_constraints:
+     - type: clamp_object_amplitude
+       amplitude: 1.1
+     - type: limit_probe_support
+       max_angle: 21.0
+
+   update_probe: {after: 5}
+   update_positions: {after: 5}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack'
+     ]
+
+ - type: 'gradient'
+   probe_modes: 4
+   sim_shape: [256, 256]
+
+   niter: 100
+   grouping: 128
+
+   noise_model:
+     type: anscombe
+     eps: 1.0e-4
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 1.0e-2
+       nesterov: True
+     probe:
+       type: 'adam'
+       learning_rate: 1.0e-1
+       nesterov: True
+     positions:
+       type: 'sgd'
+       learning_rate: 0.5
+       momentum: 0.99
+       nesterov: True
+
+   regularizers:
+     - type: obj_l1
+       cost: 0.3
+     - type: obj_tikh
+       cost: 5.0
+     - type: layers_tikh
+       cost: 5.0e+3
+
+   group_constraints: []
+   iter_constraints:
+     - type: clamp_object_amplitude
+       amplitude: 1.1
+     - type: limit_probe_support
+       max_angle: 21.0
+
+   update_probe: True
+   update_positions: True
+
+   save: {every: 10}
+   save_images: {every: 2}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack'
+     ]

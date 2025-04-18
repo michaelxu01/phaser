@@ -158,22 +158,17 @@ def initialize() -> t.Tuple[ReconsPlan, Patterns, ReconsState]:
         'dtype': 'float32',
         'raw_data': {
             'type': 'empad',
-            'path': '~/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw',
-            'diff_step': 1.0,
-            'kv': 120.0
+            'path': '~/mos2/1/mos2/mos2_0.00_dstep1.0.json',
         },
         'post_load': [
             {'type': 'poisson', 'scale': 1.0e6},
         ],
-        'init_probe': {'type': 'focused', 'conv_angle': 25.0, 'defocus': 300.0},
-        'init_object': 'random',
-        'init_scan': {'type': 'raster', 'shape': (64, 64), 'step_size': 0.6},
         'post_init': [],
         'engines': [],
     })
     xp = get_backend_module(plan.backend)
 
-    (patterns, state) = initialize_reconstruction(plan, xp, Observer())
+    (patterns, state) = initialize_reconstruction(plan, xp)
 
     # pad reconstruction
     new_sampling = Sampling((192, 192), extent=tuple(state.probe.sampling.extent))
@@ -242,7 +237,8 @@ def objective(trial: optuna.Trial):
         'xp': xp,
         'recons_name': plan.name,
         'engine_i': 0,
-        'observer': observer 
+        'observer': observer,
+        'seed': None,
     })
 
     return observer.last_error

@@ -5,27 +5,26 @@ backend: cupy
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.6_x80_y80_4DSTEM.raw"
-  diff_step: 0.6  # mrad/px
-  kv: 300.        # keV
+  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.6.json"
 
 post_load:
  - type: poisson
    scale: 1.0e+6
 
-# initialization
+# manual initialization
 
-init_probe:
-  type: 'focused'
-  conv_angle: 25  # mrad
-  defocus: 100   # angstrom
+init:
+  probe:
+    type: 'focused'
+    conv_angle: 25  # mrad
+    defocus: 100   # angstrom
 
-init_object: 'random'
+  object: 'random'
 
-init_scan:
-  type: 'raster'
-  shape: [80, 80] # ny, nx
-  step_size: 0.3  # angstrom
+  scan:
+    type: 'raster'
+    shape: [80, 80] # ny, nx
+    step_size: 0.3  # angstrom
 
 # for each reconstruction engine
 engines:
