@@ -115,14 +115,14 @@ def load_raw_data(
         logging.warning(f"Wavelength of reconstruction ({wavelength:.2e}) doesn't match wavelength " \
                         f"of previous state ({init_state.wavelength:.2e})")
 
-    raw_data['scan_hook'] = merge(
+    raw_data['scan_hook'] = pane.into_data(merge(  # type: ignore
         pane.from_data(t.cast(dict, raw_data['scan_hook']), ScanHook) if raw_data['scan_hook'] is not None else None,
         _MISSING if plan.init.scan in (None, {}) else plan.init.scan
-    )
-    raw_data['probe_hook'] = merge(
+    ))
+    raw_data['probe_hook'] = pane.into_data(merge(  # type: ignore
         pane.from_data(t.cast(dict, raw_data['probe_hook']), ProbeHook) if raw_data['probe_hook'] is not None else None,
         _MISSING if plan.init.probe in (None, {}) else plan.init.probe
-    )
+    ))
     #print(f"scan_hook: {raw_data['scan_hook']}")
     #print(f"probe_hook: {raw_data['probe_hook']}")
 
@@ -190,7 +190,7 @@ def initialize_reconstruction(
         probe = init_state.probe
     else:
         logging.info("Initializing probe...")
-        probe = t.cast(ProbeHook, raw_data['probe_hook'])(
+        probe = pane.from_data(raw_data['probe_hook'], ProbeHook)(  # type: ignore
             {'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp}
         )
     if probe.data.ndim == 2:
@@ -201,7 +201,7 @@ def initialize_reconstruction(
         scan = init_state.scan
     else:
         logging.info("Initializing scan...")
-        scan = t.cast(ScanHook, raw_data['scan_hook'])(
+        scan = pane.from_data(raw_data['scan_hook'], ScanHook)(  # type: ignore
             {'dtype': dtype, 'seed': seed, 'xp': xp}
         )
     if scan.shape[:-1] != data.patterns.shape[:-2]:
