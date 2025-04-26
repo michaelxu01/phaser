@@ -1,9 +1,10 @@
-
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { atom, PrimitiveAtom, useAtomValue, createStore, Provider } from 'jotai';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-import { JobState, WorkerState, ManagerMessage } from './types';
+import { JobState, WorkerState, ManagerMessage, JobStatus } from './types';
 import { Section } from './components';
 
 let socket: WebSocket | null = null;
@@ -61,12 +62,19 @@ function start_worker(worker_type: string): (e: React.MouseEvent) => void {
             method: "POST",
             body: "",
         })
-        .then((response) => response.ok ? response.json() : Promise.reject(response))
-        .then((json) => {
-            console.log(`Got response: ${JSON.stringify(json)}`);
+        .then((response) => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(`${response.statusText}: ${text}`);
+                });
+            }
+            return response.json();
         })
-        .catch((response: Response) => {
-            console.error(`Error: HTTP ${response.status} ${response.statusText}`)
+        .then((json) => {
+            toast.success(`Started ${worker_type} worker successfully`);
+        })
+        .catch((error) => {
+            toast.error(`Failed to start worker: ${error.message}`);
         });
     };
 }
@@ -76,54 +84,80 @@ function signal_worker(worker: WorkerState, signal: string) {
         method: "POST",
         body: "",
     })
-    .then((response) => response.ok ? response.json() : Promise.reject(response))
-    .then((json) => {
-        console.log(`Got response: ${JSON.stringify(json)}`);
+    .then((response) => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`${response.statusText}: ${text}`);
+            });
+        }
+        return response.json();
     })
-    .catch((response: Response) => {
-        console.error(`Error: HTTP ${response.status} ${response.statusText}`)
+    .then((json) => {
+        toast.success(`Signal ${signal} sent to worker ${worker.worker_id}`);
+    })
+    .catch((error) => {
+        toast.error(`Failed to signal worker: ${error.message}`);
     });
-};
+}
 
-export function JobSubmit(props: {}) {
-    const pathRef: React.MutableRefObject<HTMLInputElement | null> = React.useRef(null);
+function JobSubmit() {
+    const pathRef = React.useRef<HTMLInputElement | null>(null);
 
     function submit_job(event: React.FormEvent) {
-        const path = pathRef.current!.value;
+        event.preventDefault();
+        const path = pathRef.current?.value;
+
+        if (!path) {
+            toast.error("Job path cannot be empty");
+            return;
+        }
 
         fetch("job/start", {
             method: "POST",
-            body: JSON.stringify({'source': 'path', 'path': path}),
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ source: "path", path }),
         })
-        .then((response) => response.ok ? response.json() : Promise.reject(response))
-        .then((json) => {
-            console.log(`Got response: ${JSON.stringify(json)}`);
-        })
-        .catch((response: Response) => {
-            console.error(`Error: HTTP ${response.status} ${response.statusText}`)
-        });
+            .then((response) => {
+                if (response.status === 400) {
+                    return response.text().then((text) => {
+                        throw new Error(text);
+                    });
+                }
+                return response.json().then(data => {
+                    if (data.result === 'error') {
+                        throw new Error(data.msg);
+                    }
+                    return data;
+                });
+            })
+            .then((data) => {
+                if (data.jobs && data.jobs.length > 0) {
+                    const jobCount = data.jobs.length;
+                    toast.success(`Successfully submitted ${jobCount} job${jobCount > 1 ? 's' : ''}`);
+                    if (pathRef.current) {
+                        pathRef.current.value = ""; // Clear input after success
+                    }
+                }
+            })
+            .catch((error) => {
+                toast.error(`Failed to submit job: ${error.message}`);
+            });
     }
 
-    return <div>
-        <input name="path" type="text" size={50} ref={pathRef}/>
-        <button type="submit" onClick={submit_job}>Submit</button>
-    </div>;
+    return (
+        <form onSubmit={submit_job}>
+            <input
+                type="text"
+                ref={pathRef}
+                placeholder="Enter job path"
+                className="text-input"
+            />
+            <button type="submit">Submit Job</button>
+        </form>
+    );
 }
-
-function start_job(e: React.MouseEvent) {
-    fetch("job/start", {
-        method: "POST",
-        body: "",
-
-    })
-    .then((response) => response.ok ? response.json() : Promise.reject(response))
-    .then((json) => {
-        console.log(`Got response: ${JSON.stringify(json)}`);
-    })
-    .catch((response: Response) => {
-        console.error(`Error: HTTP ${response.status} ${response.statusText}`)
-    });
-};
 
 function cancel_job(job: JobState, e: React.MouseEvent) {
     console.log(`cancelRecons: recons: ${JSON.stringify(job)}`);
@@ -144,12 +178,13 @@ const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
         <Provider store={store}>
+            <ToastContainer position="top-right" autoClose={5000} />
             <Section name="Start workers">
                 <button onClick={start_worker("local")}>Start local worker</button>
                 <button onClick={start_worker("slurm")}>Start slurm worker</button>
             </Section>
             <Section name="Start reconstructions">
-                <JobSubmit/>
+                <JobSubmit />
             </Section>
             <Section name="Workers">
                 <Workers/>

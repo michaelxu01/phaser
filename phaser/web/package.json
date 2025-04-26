@@ -13,6 +13,7 @@
     "webpack"
   ],
   "dependencies": {
+    "css-loader": "^7.1.2",
     "d3-array": "^3.2.4",
     "d3-format": "^3.1.0",
     "d3-scale": "^4.0.2",
@@ -20,6 +21,8 @@
     "jotai": "^2.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-toastify": "^11.0.5",
+    "style-loader": "^4.0.0",
     "wasm-array": "^0.2.0"
   },
   "devDependencies": {
