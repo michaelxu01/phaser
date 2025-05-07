@@ -134,7 +134,7 @@ def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions,
     if not stack:
         obj_phase = xp.sum(obj_phase, axis=0)
 
-    obj_phase = to_numpy(remove_linear_ramp(obj_phase, mask))
+    obj_phase = remove_linear_ramp(to_numpy(obj_phase), mask)
     mask = to_numpy(mask)
 
     if options.img_dtype != 'float':
