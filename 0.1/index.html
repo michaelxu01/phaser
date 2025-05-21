@@ -324,6 +324,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Documentation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       Installation
@@ -336,6 +345,15 @@
   <a href="#running" class="md-nav__link">
     <span class="md-ellipsis">
       Running
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sample-data-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample data &amp; Examples
     </span>
   </a>
   
@@ -606,6 +624,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Documentation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       Installation
@@ -618,6 +645,15 @@
   <a href="#running" class="md-nav__link">
     <span class="md-ellipsis">
       Running
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sample-data-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample data &amp; Examples
     </span>
   </a>
   
@@ -654,8 +690,9 @@
   <h1>Home</h1>
 
 <h2 id="phaser-the-weapon-of-choice-for-ptychographic-reconstructions">phaser: The weapon of choice for ptychographic reconstructions</h2>
-<p><a href="https://github.com/hexane360/phaser/actions/workflows/ci.yaml"><img alt="" src="https://github.com/hexane360/phaser/workflows/Tests/badge.svg" /></a> <a href="https://github.com/hexane360/phaser/commits"><img alt="" src="https://img.shields.io/github/last-commit/hexane360/phaser" /></a> <a href="https://hexane360.github.io/phaser/dev/"><img alt="" src="https://img.shields.io/badge/docs-dev-blue" /></a></p>
-<p><code>phaser</code> is a fully-featured package for multislice electron ptychography.</p>
+<p><a href="https://github.com/hexane360/phaser/actions/workflows/ci.yaml"><img alt="" src="https://github.com/hexane360/phaser/workflows/Tests/badge.svg" /></a> <a href="https://github.com/hexane360/phaser/commits"><img alt="" src="https://img.shields.io/github/last-commit/hexane360/phaser" /></a> <a href="https://hexane360.github.io/phaser/dev/"><img alt="" src="https://img.shields.io/badge/docs-dev-blue" /></a> <a href="https://mybinder.org/v2/gh/hexane360/phaser/HEAD"><img alt="" src="https://mybinder.org/badge_logo.svg" /></a></p>
+<p><code>phaser</code> is a fully-featured package for multislice electron ptychography.
+See our <a href="https://arxiv.org/abs/2505.14372">arXiv paper</a> for more details.</p>
 <h2 id="features">Features</h2>
 <ul>
 <li>ePIE, LSQ-MLs, and gradient descent algorithms</li>
@@ -666,24 +703,46 @@
 <li>Upsampled (sPIE) and segmented ptychography (work in progress)</li>
 <li>Adaptive propagator correction (work in progress)</li>
 </ul>
+<h2 id="documentation">Documentation</h2>
+<p>Documentation on <code>phaser</code> can be found here: https://hexane360.github.io/phaser/dev/</p>
+<p>Documentation is still very much a work in progress, so please feel free to open an issue or email me if you have any questions!</p>
 <h2 id="installation">Installation</h2>
 <p>To install, first clone the repository from github:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/hexane360/phaser
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># enter phaser directory</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>$<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>phaser
 </span></code></pre></div>
-<p>If you're using <a href="https://cupy.dev/"><code>cupy</code></a> or <a href="https://docs.jax.dev/en/latest/"><code>jax</code></a> with a GPU, follow the installation instructions for those packages.</p>
+<p>If you're using <a href="https://cupy.dev/"><code>cupy</code></a> or <a href="https://docs.jax.dev/en/latest/"><code>jax</code></a> with a GPU, follow the installation instructions for those packages.
+Jax can be installed with or without CUDA support, if you're using CUDA make sure you install the correct version. Currently, Jax does not support CUDA on Windows.</p>
 <p>Then, install with <code>pip</code>:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>$<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </span></code></pre></div>
 <p>For the jax or cupy backend, or for the optional webserver, install with the corresponding options:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>$<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[cupy,web]&#39;</span><span class="w"> </span><span class="c1"># or &#39;.[jax,web]&#39;</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>$<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[jax,cupy12,web]&quot;</span><span class="w"> </span><span class="c1"># for the &#39;jax&#39;, &#39;cupy12&#39;, and &#39;web&#39; options</span>
+</span></code></pre></div>
+<p>Here are the supported installation options:</p>
+<ul>
+<li><code>jax</code>: For the <a href="https://docs.jax.dev/en/latest/"><code>jax</code></a> backend (required for the gradient descent engine)</li>
+<li><code>cupy11</code>: <code>cupy</code> for CUDA toolkit 11.x</li>
+<li><code>cupy12</code>: <code>cupy</code> for CUDA toolkit 12.x</li>
+<li><code>web</code>: For the web interface</li>
+</ul>
+<p>For <a href="https://optuna.org/">Optuna</a> hyperoptimization, install it as well:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>optuna
 </span></code></pre></div>
 <h2 id="running">Running</h2>
 <p>After installation, the <code>phaser</code> command should be available. Phaser can be run from the command line, or through a job server.</p>
 <p>To run a single reconstruction on the command line, call <code>phaser run &lt;file&gt;</code>, where <code>file</code> is the path to a reconstruction plan file.</p>
 <p>To run the webserver, call <code>phaser serve</code>. By default, the server serves on https://localhost:5050/, so navigate there in a web browser. The server interface can be used to start workers and schedule reconstruction jobs.</p>
 <p>To run a worker, call <code>phaser worker &lt;url&gt;</code>, where <code>url</code> is the URL of a running job server.</p>
+<h2 id="sample-data-examples">Sample data &amp; Examples</h2>
+<p>Sample data can be downloaded from the following dropbox link: https://www.dropbox.com/scl/fo/txm3k88ubrzvt541v23ir/AL-l_m6VnGlFxzHWZSSc0TA?rlkey=8qxtwnc8cwhpff6jpr5s40y6i&amp;st=x9pbwke0&amp;dl=0</p>
+<p>Copy the <code>sample_data</code> directory into the root code folder.</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>$<span class="w"> </span>curl<span class="w"> </span>--output<span class="w"> </span>sample_data.zip<span class="w"> </span>-L<span class="w"> </span><span class="s1">&#39;https://www.dropbox.com/scl/fo/txm3k88ubrzvt541v23ir/AL-l_m6VnGlFxzHWZSSc0TA?rlkey=8qxtwnc8cwhpff6jpr5s40y6i&amp;st=x9pbwke0&amp;dl=1&#39;</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>$<span class="w"> </span>unzip<span class="w"> </span>sample_data.zip<span class="w"> </span>-x<span class="w"> </span>/<span class="w"> </span>-d<span class="w"> </span>sample_data
+</span></code></pre></div>
+<p>Sample data includes simulated and experimental MoS2 data, simulated and experimental Si data, and experimental PrScO3 data.
+After the data is downloaded, any of the example reconstructions can be run as <code>phaser run examples/mos2_grad.yaml</code> (for example).</p>
 <h2 id="alternatives">Alternatives</h2>
 <p>Other notable ptychography packages:</p>
 <ul>
@@ -691,6 +750,7 @@
 <li><a href="https://github.com/py4dstem/py4DSTEM"><code>py4DSTEM</code></a></li>
 <li><a href="https://opg.optica.org/oe/fulltext.cfm?uri=oe-31-9-13763&amp;id=529026"><code>PtyLab.m/py/jl</code></a></li>
 <li><a href="https://ptycho.github.io/ptypy/">PtyPy</a></li>
+<li><a href="https://github.com/chiahao3/ptyrad">PtyRAD</a></li>
 </ul>
 
 
