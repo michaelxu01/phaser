@@ -3,14 +3,14 @@ import numpy
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 import pytest
 
-from .utils import with_backends, get_backend_module, check_array_equals_file
+from .utils import with_backends, check_array_equals_file
 
-from phaser.utils.num import to_numpy, abs2
+from phaser.utils.num import get_backend_module, BackendName, to_numpy, abs2
 from phaser.utils.object import random_phase_object, ObjectSampling
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_random_phase_object(backend: str):
+@with_backends('numpy', 'jax', 'cuda')
+def test_random_phase_object(backend: BackendName):
     xp = get_backend_module(backend)
 
     obj = random_phase_object((8, 8), 1e-4, seed=2620771887, dtype=numpy.complex64, xp=xp)
@@ -144,10 +144,10 @@ def test_object_slicing():
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_get_views_{dtype}.npy', out_name='object_get_views_{dtype}_{backend}.npy')
-def test_get_cutouts(backend: str, dtype: str) -> numpy.ndarray:
+def test_get_cutouts(backend: BackendName, dtype: str) -> numpy.ndarray:
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 
@@ -174,10 +174,10 @@ def test_get_cutouts(backend: str, dtype: str) -> numpy.ndarray:
 
     return to_numpy(samp.cutout(obj, pos, cutout_shape).get())
 
-@with_backends('cpu', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_add_views_{dtype}.tiff', out_name='object_add_views_{dtype}_{backend}.tiff', decimal=5)
-def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
+def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 
@@ -247,8 +247,8 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
     return to_numpy(obj)
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_cutout_2d(backend: str):
+@with_backends('numpy', 'jax', 'cuda')
+def test_cutout_2d(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 
@@ -263,8 +263,8 @@ def test_cutout_2d(backend: str):
     cutouts.set(cutouts.get())
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_cutout_multidim(backend: str):
+@with_backends('numpy', 'jax', 'cuda')
+def test_cutout_multidim(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (80, 100)
 
@@ -296,10 +296,10 @@ def test_cutout_multidim(backend: str):
     cutouts.set(cutouts.get())
 
 
-@with_backends('cpu', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
-def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
+def test_set_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 

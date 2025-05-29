@@ -93,7 +93,8 @@ testpaths = ["tests"]
 markers = [
     "cuda: Run on CUDA backend",
     "jax: Run on jax backend",
-    "cpu: Run on CPU backend",
+    "torch: Run on PyTorch backend",
+    "numpy: Run on numpy backend",
     "slow: mark a test as slow",
 
     "expected_filename: Filename to load expected result from",
