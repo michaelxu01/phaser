@@ -141,6 +141,23 @@ def pad(
     return _MockTensor(torch.nn.functional.pad(arr, pad, mode=_PAD_MODE_MAP[mode], **kwargs))
 
 
+def indices(
+    shape: t.Tuple[int, ...], dtype: t.Union[str, None, t.Type[numpy.generic], torch.dtype] = None, sparse: bool = False
+) -> t.Union[torch.Tensor, t.Tuple[torch.Tensor, ...]]:
+    dtype = to_torch_dtype(dtype) if dtype is not None else torch.int64
+
+    n = len(shape)
+
+    if sparse:
+        return tuple(
+            _MockTensor(torch.arange(s, dtype=dtype).reshape((1,) * i + (s,) + (1,) * (n - i - 1)))
+            for (i, s) in enumerate(shape)
+        )
+
+    arrs = tuple(torch.arange(s, dtype=dtype) for s in shape)
+    return _MockTensor(torch.stack(torch.meshgrid(*arrs, indexing='ij'), dim=0))
+
+
 def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
     try:
         kwargs['dtype'] = to_torch_dtype(kwargs['dtype'])
@@ -164,8 +181,9 @@ def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
 
 
 mock_torch = _MockModule(torch, {
-    'torch.array': functools.update_wrapper(lambda *args, **kwargs: _MockTensor(torch.asarray(*args, **kwargs)), torch.asarray),  # type: ignore
+    'torch.array': functools.update_wrapper(lambda *args, **kwargs: _MockTensor(_wrap_call(torch.asarray, *args, **kwargs)), torch.asarray),  # type: ignore
     'torch.pad': pad,
+    'torch.indices': indices,
 }, _wrap_call)
 
 mock_torch._MockTensor = _MockTensor  # type: ignore
