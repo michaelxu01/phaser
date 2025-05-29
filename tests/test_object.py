@@ -144,7 +144,7 @@ def test_object_slicing():
     )
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_get_views_{dtype}.npy', out_name='object_get_views_{dtype}_{backend}.npy')
 def test_get_cutouts(backend: BackendName, dtype: str) -> numpy.ndarray:
@@ -174,7 +174,7 @@ def test_get_cutouts(backend: BackendName, dtype: str) -> numpy.ndarray:
 
     return to_numpy(samp.cutout(obj, pos, cutout_shape).get())
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_add_views_{dtype}.tiff', out_name='object_add_views_{dtype}_{backend}.tiff', decimal=5)
 def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
@@ -184,15 +184,15 @@ def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     xp = get_backend_module(backend)
 
     if dtype == 'uint8':
-        obj = xp.zeros(samp.shape, dtype=numpy.uint8)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.uint8)
         cutouts = xp.full((30, *cutout_shape), 15, dtype=numpy.uint8)
         mag = 15
     elif dtype == 'float':
-        obj = xp.zeros(samp.shape, dtype=numpy.float32)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.float32)
         cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.float32)
         mag = 10.
     elif dtype == 'complex':
-        obj = xp.zeros(samp.shape, dtype=numpy.complex64)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.complex64)
         phases = xp.array([
             4.30015617, 5.15367214, 6.13496658, 4.9268498 , 3.60960355,
             0.42680191, 5.12820671, 1.3260991 , 2.2065813 , 5.1417133 ,
@@ -247,13 +247,13 @@ def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     return to_numpy(obj)
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 def test_cutout_2d(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 
     xp = get_backend_module(backend)
-    obj = xp.zeros(samp.shape, dtype=numpy.float32)
+    obj = xp.zeros(tuple(samp.shape), dtype=numpy.float32)
 
     cutouts = samp.cutout(obj, [[0., 0.], [2., 2.], [4., 4.], [-2., -2.]], cutout_shape)
     assert cutouts.get().shape == (4, *cutout_shape)
@@ -263,7 +263,7 @@ def test_cutout_2d(backend: BackendName):
     cutouts.set(cutouts.get())
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 def test_cutout_multidim(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (80, 100)
@@ -296,7 +296,7 @@ def test_cutout_multidim(backend: BackendName):
     cutouts.set(cutouts.get())
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
 def test_set_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
@@ -306,15 +306,15 @@ def test_set_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     xp = get_backend_module(backend)
 
     if dtype == 'uint8':
-        obj = xp.zeros(samp.shape, dtype=numpy.uint8)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.uint8)
         cutouts = xp.full((30, *cutout_shape), 15, dtype=numpy.uint8)
         mag = 15
     elif dtype == 'float':
-        obj = xp.zeros(samp.shape, dtype=numpy.float32)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.float32)
         cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.float32)
         mag = 10.
     elif dtype == 'complex':
-        obj = xp.zeros(samp.shape, dtype=numpy.complex64)
+        obj = xp.zeros(tuple(samp.shape), dtype=numpy.complex64)
         cutouts = xp.full((30, *cutout_shape), 10. + 15.j, dtype=numpy.complex64)
         mag = abs2(10. + 15.j)
     else:
