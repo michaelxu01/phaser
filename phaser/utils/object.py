@@ -49,7 +49,7 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
     rng = create_rng(seed, 'random_phase_object')
 
     real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float64
-    obj_angle = xp2.array(rng.normal(0., sigma, tuple(shape)), dtype=real_dtype)
+    obj_angle = xp2.asarray(rng.normal(0., sigma, tuple(shape)), dtype=real_dtype)
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
 
@@ -98,7 +98,7 @@ def resample_slices(
         # TODO more options in this case?
         new_total_thick = numpy.sum(new_thicknesses)
 
-        slice_frac = xp.array((new_thicknesses / new_total_thick)[(slice(None), *repeat(None, obj.ndim - 1))])
+        slice_frac = xp.asarray((new_thicknesses / new_total_thick)[(slice(None), *repeat(None, obj.ndim - 1))])
         return xp.exp((xp.log(obj) * slice_frac).astype(obj.dtype))
 
     if obj.shape[0] != len(old_thicknesses):
@@ -177,7 +177,7 @@ def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArr
         else:
             slice_i = slice_is[i]
             # linearly interpolate
-            t = xp.array(float((new_z - old_zs[slice_i]) / delta_zs[slice_i]), dtype=real_dtype)
+            t = xp.asarray(float((new_z - old_zs[slice_i]) / delta_zs[slice_i]), dtype=real_dtype)
             slice = ((1-t)*arr[slice_i] + t*arr[slice_i + 1]).astype(arr.dtype)
 
         new_arr = at(new_arr, i).set(slice)
@@ -341,7 +341,7 @@ class ObjectSampling:
 
     def cutout(self, arr: numpy.ndarray, pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[t.Any]:
         xp = get_array_module(arr, pos)
-        return ObjectCutout(self, xp.array(arr), xp.array(pos), shape)
+        return ObjectCutout(self, xp.asarray(arr), xp.asarray(pos), shape)
 
     def get_view_at_pos(self, arr: NDArray[NumT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> NDArray[NumT]:
         """

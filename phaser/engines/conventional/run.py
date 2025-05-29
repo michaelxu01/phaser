@@ -47,7 +47,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         xp=xp, dtype=dtype
     )
     patterns = args['data'].patterns
-    pattern_mask = xp.array(args['data'].pattern_mask)
+    pattern_mask = xp.asarray(args['data'].pattern_mask)
 
     assert patterns.dtype == sim.dtype
     assert pattern_mask.dtype == sim.dtype

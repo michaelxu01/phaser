@@ -41,7 +41,7 @@ def test_affine_transform_1d(mode: str, order: int, expected: ArrayLike, backend
 
     # interpolates at coords `numpy.linspace(-2., 6., 21, endpoint=True)`
     assert_array_almost_equal(numpy.array(expected), to_numpy(affine_transform(
-        xp.array(in_ys), [0.4], -2.0,
+        xp.asarray(in_ys), [0.4], -2.0,
         mode=t.cast(_BoundaryMode, mode), order=order, cval=1.0, output_shape=(21,)
     )), decimal=8)
 
