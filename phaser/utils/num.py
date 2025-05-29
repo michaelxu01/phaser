@@ -150,7 +150,7 @@ def get_array_module(*arrs: t.Optional[ArrayLike]):
         if any(isinstance(arr, xp.ndarray) for arr in arrs):
            return xp
     if (xp := _BACKEND_LOADER.get('torch')) is not None:
-        if any(isinstance(arr, xp._C.TensorBase) for arr in arrs):  # type: ignore
+        if any(isinstance(arr, (xp._MockTensor, xp._C.TensorBase)) for arr in arrs):  # type: ignore
             return xp
     try:
         from cupy import get_array_module as f  # type: ignore
@@ -175,7 +175,7 @@ def get_scipy_module(*arrs: t.Optional[ArrayLike]):
             if any(isinstance(arr, xp.ndarray) for arr in arrs):
                 return sys.modules['jax.scipy']
         if (xp := _BACKEND_LOADER.get('torch')) is not None:
-            if any(isinstance(arr, xp._C.TensorBase) for arr in arrs):  # type: ignore
+            if any(isinstance(arr, (xp._MockTensor, xp._C.TensorBase)) for arr in arrs):  # type: ignore
                 raise ValueError("`get_scipy_module` is not supported for the PyTorch backend")
         if (xp := _BACKEND_LOADER.get('cupy')) is not None:
             f = sys.modules['cupyx.scipy'].get_array_module
@@ -253,7 +253,7 @@ def is_torch(arr: t.Any) -> bool:
         return False
 
     return any(
-        isinstance(arr, torch._C.TensorBase)
+        isinstance(arr, (torch._MockTensor, torch._C.TensorBase))
         for arr in torch.utils._pytree.tree_leaves(arr)  
     )
 
@@ -401,6 +401,9 @@ def to_complex_dtype(dtype: DTypeLike) -> t.Type[numpy.complexfloating]:
     """
     Convert a floating point dtype to a complex version.
     """
+    if _BACKEND_LOADER.get('torch') is not None:
+        from ._torch_kernels import to_numpy_dtype
+        dtype = to_numpy_dtype(dtype)  # type: ignore
 
     if not (isinstance(dtype, type) and issubclass(dtype, numpy.generic)):
         dtype = numpy.dtype(dtype).type
@@ -433,6 +436,9 @@ def to_real_dtype(dtype: DTypeLike) -> t.Type[numpy.floating]:
     """
     Convert a complex dtype to a plain float version.
     """
+    if _BACKEND_LOADER.get('torch') is not None:
+        from ._torch_kernels import to_numpy_dtype
+        dtype = to_numpy_dtype(dtype)  # type: ignore
 
     if not (isinstance(dtype, type) and issubclass(dtype, numpy.generic)):
         dtype = numpy.dtype(dtype).type

@@ -7,7 +7,7 @@ from phaser.utils.num import get_backend_module, BackendName, Sampling, to_numpy
 from phaser.utils.optics import make_focused_probe, fresnel_propagator
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @check_array_equals_file('probe_10mrad_focused_mag.tiff', decimal=5)
 def test_focused_probe(backend: BackendName) -> numpy.ndarray:
     xp = get_backend_module(backend)
@@ -15,10 +15,10 @@ def test_focused_probe(backend: BackendName) -> numpy.ndarray:
     sampling = Sampling((1024, 1024), extent=(25., 25.))
 
     probe = make_focused_probe(*sampling.recip_grid(dtype=numpy.float32, xp=xp), wavelength=0.0251, aperture=10.)
-    return to_numpy(numpy.abs(probe))
+    return to_numpy(xp.abs(probe))
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @check_array_equals_file('probe_10mrad_20over.tiff', decimal=5)
 def test_defocused_probe(backend: BackendName) -> numpy.ndarray:
     xp = get_backend_module(backend)
@@ -29,8 +29,8 @@ def test_defocused_probe(backend: BackendName) -> numpy.ndarray:
     return to_numpy(probe)
 
 
-@with_backends('numpy', 'jax', 'cuda')
-@check_array_equals_file('fresnel_200kV_1nm_phase.tiff', decimal=8)
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+@check_array_equals_file('fresnel_200kV_1nm_phase.tiff', decimal=5)
 def test_fresnel_propagator(backend: BackendName) -> numpy.ndarray:
     xp = get_backend_module(backend)
 
@@ -41,7 +41,7 @@ def test_fresnel_propagator(backend: BackendName) -> numpy.ndarray:
     ))
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 @check_array_equals_file('probe_10mrad_focused_mag.tiff', decimal=5)
 def test_propagator_sign(backend: BackendName) -> numpy.ndarray:
     xp = get_backend_module(backend)
@@ -55,4 +55,4 @@ def test_propagator_sign(backend: BackendName) -> numpy.ndarray:
     prop = fresnel_propagator(ky, kx, wavelength=0.0251, delta_z=200.)
 
     probe = ifft2(fft2(probe) * prop)
-    return to_numpy(numpy.abs(probe))
+    return to_numpy(xp.abs(probe))

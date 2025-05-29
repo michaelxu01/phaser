@@ -80,7 +80,7 @@ class ProbeState():
 
     def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
-            self.sampling, xp.array(self.data)
+            self.sampling, xp.asarray(self.data)
         )
 
     def to_numpy(self) -> Self:
@@ -107,7 +107,7 @@ class ObjectState():
 
     def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
-            self.sampling, xp.array(self.data), xp.array(self.thicknesses)
+            self.sampling, xp.asarray(self.data), xp.asarray(self.thicknesses)
         )
 
     def to_numpy(self) -> Self:
@@ -118,7 +118,7 @@ class ObjectState():
     def zs(self) -> NDArray[numpy.floating]:
         xp = get_array_module(self.thicknesses)
         if len(self.thicknesses) < 2:
-            return xp.array([0.], dtype=self.thicknesses.dtype)
+            return xp.asarray([0.], dtype=self.thicknesses.dtype)
         return xp.cumsum(self.thicknesses) - self.thicknesses
 
     def copy(self) -> Self:
@@ -180,8 +180,8 @@ class ReconsState:
             iter=self.iter,
             probe=self.probe.to_xp(xp),
             object=self.object.to_xp(xp),
-            scan=xp.array(self.scan),
-            tilt=None if self.tilt is None else xp.array(self.tilt),
+            scan=xp.asarray(self.scan),
+            tilt=None if self.tilt is None else xp.asarray(self.tilt),
             progress=self.progress,
             wavelength=self.wavelength,
         )

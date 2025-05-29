@@ -59,7 +59,7 @@ def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
 
     logger.info(f"Mean pattern intensity: {numpy.nanmean(numpy.nansum(patterns, axis=(-1, -2)))}")
 
-    raw_data['patterns'] = xp.array(patterns)
+    raw_data['patterns'] = xp.asarray(patterns)
     return raw_data
 
 
@@ -111,7 +111,7 @@ def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patter
     sum_pattern = xp.zeros(patterns.patterns.shape[-2:], dtype=patterns.patterns.dtype)
 
     for group in groups:
-        pats = xp.array(patterns.patterns[tuple(group)]) * xp.array(patterns.pattern_mask)
+        pats = xp.asarray(patterns.patterns[tuple(group)]) * xp.asarray(patterns.pattern_mask)
         sum_pattern += t.cast(NDArray[numpy.floating], xp.nansum(pats, axis=tuple(range(pats.ndim - 2))))
 
     mean_pattern = sum_pattern / math.prod(patterns.patterns.shape[:-2])

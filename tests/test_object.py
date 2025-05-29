@@ -9,13 +9,13 @@ from phaser.utils.num import get_backend_module, BackendName, to_numpy, abs2
 from phaser.utils.object import random_phase_object, ObjectSampling
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cuda', 'torch')
 def test_random_phase_object(backend: BackendName):
     xp = get_backend_module(backend)
 
     obj = random_phase_object((8, 8), 1e-4, seed=2620771887, dtype=numpy.complex64, xp=xp)
 
-    assert obj.dtype == numpy.complex64
+    assert obj.dtype == xp.complex64
     assert_array_almost_equal(to_numpy(obj), numpy.array([
         [1.-1.5272086e-05j, 1.+1.0225522e-04j, 1.-8.0865902e-05j, 1.-1.7328106e-05j, 1.-1.2898073e-04j, 1.+2.2908196e-05j, 1.+8.1173976e-06j, 1.+2.1377344e-05j],
         [1.+7.4363430e-05j, 1.-9.1323782e-05j, 1.-2.0272582e-04j, 1.-4.8823396e-05j, 1.+9.3021641e-05j, 1.+1.0718761e-04j, 1.+5.0221975e-06j, 1.-5.5743083e-05j],
