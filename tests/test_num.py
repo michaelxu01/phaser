@@ -3,25 +3,27 @@ import numpy
 from numpy.testing import assert_array_almost_equal
 import pytest
 
-from .utils import with_backends, get_backend_module, get_backend_scipy, mock_importerror
+from .utils import with_backends, mock_importerror
 
 from phaser.utils.num import (
-    get_array_module, get_scipy_module,
+    get_array_module, get_scipy_module, BackendName,
+    get_backend_module, get_backend_scipy,
     to_real_dtype, to_complex_dtype,
     fft2, ifft2, abs2,
     to_numpy, as_array
 )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_get_array_module(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_get_array_module(backend: BackendName):
     expected = get_backend_module(backend)
 
     mocked_imports = {
-        # on cpu, pretend cupy and jax don't exist
-        'cpu': {'cupy', 'jax'},
+        # on numpy, pretend cupy and jax don't exist
+        'numpy': {'cupy', 'jax', 'torch'},
         'jax': {},
         'cuda': {},
+        'torch': {},
     }[backend]
 
     assert get_array_module() is numpy
@@ -29,14 +31,14 @@ def test_get_array_module(backend: str):
     with mock_importerror(mocked_imports):
         assert get_array_module(
             numpy.array([1., 2., 3.]),
-            expected.array([1, 2, 3]),
+            expected.asarray([1, 2, 3]),
             None,
             numpy.array([1., 2., 3.]),
         ) is expected
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_get_scipy_module(backend: str):
+@with_backends('numpy', 'jax', 'cuda')
+def test_get_scipy_module(backend: BackendName):
     import scipy
 
     xp = get_backend_module(backend)
@@ -44,7 +46,7 @@ def test_get_scipy_module(backend: str):
 
     mocked_imports = {
         # on cpu, pretend cupyx doesn't exist
-        'cpu': {'cupyx'},
+        'numpy': {'cupyx'},
         'jax': {},
         'cuda': {},
     }[backend]
@@ -54,7 +56,7 @@ def test_get_scipy_module(backend: str):
     with mock_importerror(mocked_imports):
         assert get_scipy_module(
             numpy.array([1., 2., 3.]),
-            xp.array([1, 2, 3]),
+            xp.asarray([1, 2, 3]),
             None,
             numpy.array([1., 2., 3.]),
         ) is expected
@@ -98,12 +100,12 @@ def test_to_complex_dtype_invalid():
         to_complex_dtype(numpy.int_)
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_fft2(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_fft2(backend: BackendName):
     xp = get_backend_module(backend)
 
     # point input, f = 5 delta(x) delta(y)
-    a = xp.pad(xp.array([[5.]], dtype=numpy.float32), ((2, 2), (2, 2)))
+    a = xp.asarray(numpy.pad([[5.]], (2, 2)).astype(numpy.float32))
 
     # even input, so output is real
     # delta function input, so output is constant
@@ -121,16 +123,16 @@ def test_fft2(backend: str):
     # zero frequency is cornered
     assert_array_almost_equal(
         to_numpy(fft2(a)),
-        numpy.pad([[5.+5.j]], ((0, 4), (0, 4))).astype(numpy.complex64)
+        numpy.pad([[5.+5.j]], (0, 4)).astype(numpy.complex64)
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_ifft2(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_ifft2(backend: BackendName):
     xp = get_backend_module(backend)
 
     # point input, F = delta(k_x) delta(k_y)
-    a = xp.pad(xp.array([[5.]], dtype=numpy.float32), ((0, 4), (0, 4)))
+    a = xp.asarray(numpy.pad([[5.]], (0, 4)).astype(numpy.float32))
 
     # even input, so output is real
     # delta function input, so output is constant
@@ -154,30 +156,30 @@ def test_ifft2(backend: str):
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_abs2(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_abs2(backend: BackendName):
     xp = get_backend_module(backend)
 
-    if backend == 'cpu':
+    if backend == 'numpy':
         assert_array_almost_equal(abs2([1.+1.j, 1.-1.j]), numpy.array([2., 2.]))
 
     assert_array_almost_equal(
-        to_numpy(abs2(xp.array([1.+1.j, 1.-1.j]))),
+        to_numpy(abs2(xp.asarray([1.+1.j, 1.-1.j]))),
         numpy.array([2., 2.]),
     )
 
     assert_array_almost_equal(
-        to_numpy(abs2(xp.array([1., -2., 5.], dtype=numpy.float32))),
+        to_numpy(abs2(xp.asarray([1., -2., 5.], dtype=numpy.float32))),
         numpy.array([1, 4., 25.], dtype=numpy.float32),
         decimal=5  # this is pretty poor performance
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_to_numpy(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_to_numpy(backend: BackendName):
     xp = get_backend_module(backend)
 
-    arr = xp.array([1., 2., 3., 4.])
+    arr = xp.asarray([1., 2., 3., 4.])
 
     assert_array_almost_equal(
         to_numpy(arr),
@@ -185,11 +187,11 @@ def test_to_numpy(backend: str):
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_to_array(backend: str):
+@with_backends('numpy', 'jax', 'cuda', 'torch')
+def test_to_array(backend: BackendName):
     xp = get_backend_module(backend)
 
-    arr = xp.array([1., 2., 3., 4.])
+    arr = xp.asarray([1., 2., 3., 4.])
     assert as_array(arr) is arr
 
     arr = as_array([1., 2., 3., 4.])

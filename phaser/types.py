@@ -74,7 +74,7 @@ class _ReconsVarsAnnotation(ConvertAnnotation):
         return hash(self.__class__.__name__)
 
 
-BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
+BackendName: t.TypeAlias = t.Literal['cupy', 'jax', 'torch', 'pytorch', 'numpy']
 ReconsVar: t.TypeAlias = t.Literal['object', 'probe', 'positions']
 
 ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotation()]
