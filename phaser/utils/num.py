@@ -29,10 +29,10 @@ T = t.TypeVar('T')
 P = t.ParamSpec('P')
 
 IndexLike: t.TypeAlias = t.Union[
-    int,
+    int, slice, Ellipsis,
     NDArray[numpy.integer[t.Any]],
     NDArray[numpy.bool_],
-    t.Tuple[t.Union[int, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
+    t.Tuple[t.Union[int, slice, Ellipsis, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
 ]
 
 logger = logging.getLogger(__name__)
@@ -143,8 +143,6 @@ def get_default_backend() -> BackendName:
 
 
 def get_array_module(*arrs: t.Optional[ArrayLike]):
-    # pyright: ignore[reportMissingImports]
-
     if (xp := _BACKEND_LOADER.get('jax')) is not None:
         # TODO: detect pytrees as well?
         if any(isinstance(arr, xp.ndarray) for arr in arrs):
@@ -152,12 +150,9 @@ def get_array_module(*arrs: t.Optional[ArrayLike]):
     if (xp := _BACKEND_LOADER.get('torch')) is not None:
         if any(isinstance(arr, (xp._MockTensor, xp._C.TensorBase)) for arr in arrs):  # type: ignore
             return xp
-    try:
-        from cupy import get_array_module as f  # type: ignore
-        if not t.TYPE_CHECKING:
-            return f(*arrs)
-    except ImportError:
-        pass
+    if (xp := _BACKEND_LOADER.get('cupy')) is not None:
+        if any(isinstance(arr, xp.ndarray) for arr in arrs):
+            return xp
     return numpy
 
 
@@ -613,6 +608,9 @@ def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray
     if not t.TYPE_CHECKING and is_jax(x):
         from ._jax_kernels import outer
         return outer(ufunc, x, y)
+
+    if not t.TYPE_CHECKING and is_torch(x):
+        return ufunc(x[(..., *((None,) * y.ndim))], y[(*((None,) * x.ndim), ...)])
 
     return ufunc.outer(x, y)
 
