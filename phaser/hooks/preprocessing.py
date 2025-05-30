@@ -78,7 +78,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
         logger.info(f"Dropping {n}/{patterns.shape[0]} patterns which are at least {props.threshold:.1%} NaN values")
         patterns = patterns[mask]
 
-        if scan.shape[0] == mask.size:
+        if scan.shape[0] == xp.size(mask):
             # apply mask to scan as well
             scan = scan[mask]
         elif scan.shape[0] != patterns.shape[0]:

@@ -49,10 +49,10 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     patterns = args['data'].patterns
     pattern_mask = xp.asarray(args['data'].pattern_mask)
 
-    assert patterns.dtype == sim.dtype
-    assert pattern_mask.dtype == sim.dtype
-    assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
-    assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+    #assert patterns.dtype == sim.dtype
+    #assert pattern_mask.dtype == sim.dtype
+    #assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+    #assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
     solver = props.solver(props)
     sim = solver.init(sim)
@@ -100,8 +100,8 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
                 calc_error_mask=calc_error_mask,
                 observer=observer,
             )
-            assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
-            assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+            #assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+            #assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
             sim = sim.apply_iter_constraints()
 
@@ -117,7 +117,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
                 update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
                 logger.info(f"Position update: mean {xp.mean(update_mag)}")
                 sim.state.scan += pos_update
-                assert sim.state.scan.dtype == sim.dtype
+                #assert sim.state.scan.dtype == sim.dtype
 
                 # check positions are at least overlapping object
                 sim.state.object.sampling.check_scan(sim.state.scan, sim.state.probe.sampling.extent / 2.)

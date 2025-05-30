@@ -285,7 +285,7 @@ class ObjectSampling:
             (scan_positions[..., 1] < obj_min[1]) | (scan_positions[..., 1] > obj_max[1])
         )
         if (n_outside := int(xp.sum(outside))):
-            raise ValueError(f"{n_outside}/{outside.size} probe positions completely outside object")
+            raise ValueError(f"{n_outside}/{xp.size(outside)} probe positions completely outside object")
 
     def _pos_to_object_idx(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""
@@ -378,8 +378,8 @@ class ObjectSampling:
 
     def get_region_mask(self, pad: ArrayLike = 0., *, xp: t.Any = None) -> NDArray[numpy.bool_]:
         xp2 = numpy if xp is None else cast_array_module(xp)
-        mask = xp2.zeros(self.shape, dtype=numpy.bool_)
-        mask = at(mask, self.get_region_crop(pad=pad)).set(numpy.bool_(1))  # type: ignore
+        mask = xp2.zeros(tuple(self.shape), dtype=numpy.bool_)
+        mask = at(mask, self.get_region_crop(pad=pad)).set(t.cast(numpy.bool_, 1))
         return mask
 
     def get_region_center(self) -> NDArray[numpy.floating]:
