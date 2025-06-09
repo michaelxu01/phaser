@@ -324,10 +324,10 @@ class ObjectSampling:
         """
         Get the subpixel shifts between `pos` and the cutout region around `pos`.
 
-        Returns the shift from the rounded position towards the actual position.
+        Returns the shift from the rounded position towards the actual position, in length units.
         """
         pos = self._pos_to_object_idx(as_array(pos), cutout_shape)
-        return (pos - get_array_module(pos).round(pos)).astype(numpy.float64)
+        return (pos - get_array_module(pos).round(pos)).astype(numpy.float64) * self.sampling
 
     @t.overload
     def cutout(  # pyright: ignore[reportOverlappingOverload]
@@ -505,7 +505,7 @@ class ObjectCutout(t.Generic[DTypeT]):
         if is_cupy(self.obj):
             try:
                 from ._cuda_kernels import get_cutouts
-                return get_cutouts(self.obj, self._start_idxs, self.cutout_shape, numpy.bool(1).astype(self.obj.dtype))  # type: ignore
+                return get_cutouts(self.obj, self._start_idxs, self.cutout_shape, 1)  # type: ignore
             except (ImportError, NotImplementedError):
                 pass
 
