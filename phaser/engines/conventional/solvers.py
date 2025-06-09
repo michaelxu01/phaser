@@ -351,7 +351,7 @@ class EPIESolver(ConventionalSolver):
                                                                             buf_n=self.engine_plan.buffer_n_groups)):
             group_calc_error = calc_error and calc_error_mask[group_i]
 
-            (sim, errors) = epie_run(
+            (sim, errors, group_pos_update) = epie_run(
                 sim, group, group_patterns,
                 pattern_mask=pattern_mask,
                 props=propagators,
@@ -365,6 +365,10 @@ class EPIESolver(ConventionalSolver):
             assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
             sim = sim.apply_group_constraints(group)
+
+            if update_positions:
+                assert group_pos_update is not None
+                pos_update = at(pos_update, tuple(group)).set(group_pos_update)
 
             observer.update_group(sim.state, self.engine_plan.send_every_group)
 
@@ -402,7 +406,7 @@ def epie_dry_run(
     return exp_intensity / model_intensity
 
 
-@partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe', 'calc_error'))
+@partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe', 'update_position', 'calc_error'))
 def epie_run(
     sim: SimulationState,
     group: NDArray[numpy.integer],
@@ -413,8 +417,9 @@ def epie_run(
     beta_probe: float = 0.9,
     update_object: bool = True,
     update_probe: bool = True,
+    update_position: bool = True,
     calc_error: bool = True,
-) -> t.Tuple[SimulationState, t.Optional[NDArray[numpy.floating]]]:
+) -> t.Tuple[SimulationState, t.Optional[NDArray[numpy.floating]], t.Optional[NDArray[numpy.floating]]]:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
@@ -473,4 +478,19 @@ def epie_run(
 
     (sim, chi) = slice_backwards(props, (sim, chi), update_slice)
 
-    return (sim, errors)
+    if update_position:
+        def calc_pos_step(probes_fft: NDArray[numpy.complexfloating], kx: NDArray[numpy.floating]) -> NDArray[numpy.floating]:
+            delta_P_x = ifft2(probes_fft * -2.j*numpy.pi * kx)
+
+            prod = delta_P_x * group_obj[:, 0, None]
+            alpha = xp.sum(xp.real(chi * xp.conj(prod)), axis=(1, -1, -2)) / xp.sum(abs2(prod))
+            return alpha
+
+        # update directions
+        probes_fft = fft2(probes)
+        probes_fft /= xp.sum(abs2(probes), axis=(1, -1, -2), keepdims=True)
+        pos_update = xp.stack(tuple(calc_pos_step(probes_fft, k) for k in (sim.ky, sim.kx)), axis=-1)
+    else:
+        pos_update = None
+
+    return (sim, errors, pos_update)
