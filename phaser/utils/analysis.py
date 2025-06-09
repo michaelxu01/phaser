@@ -261,3 +261,45 @@ Refinement result: {result.message}
     # perform final upsampling
     upsamp_obj = object.sampling.resample(object_phase, ground_truth_samp, cval=0., affine=affine, order=order)
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
+
+
+from skimage import filters
+def get_filtered(image, phase_real_samping_A, squared_butterworth=True, order=3.0, npad=0):
+    """filtering out low-freq background variance and high-freq noise in an image using
+    lowpass and highpass butterworth filtering.
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to be filtered.
+    phase_real_samping_A : image sampling in Å.
+    squared_butterworth : bool, optional
+        Whether the traditional Butterworth filter or its square is used.
+    order : float, optional
+        The order of the Butterworth filter
+
+    Returns
+    -------
+    filtered image ndarray.
+    """
+    cut_off_low = min(1 / 0.3 * phase_real_samping_A, 0.49) # 0.3Å atomic diameter
+    cut_off_high = min( 1 / 7.0 * phase_real_samping_A, 0.49)
+    remove_high = filters.butterworth(image,
+                                      cutoff_frequency_ratio=cut_off_low,
+                                      order=order,
+                                      high_pass=False,
+                                      squared_butterworth=squared_butterworth,
+                                      npad=npad,)
+    midband = filters.butterworth(remove_high,
+                                  cutoff_frequency_ratio=cut_off_high,
+                                  order=order,
+                                  high_pass=True,
+                                  squared_butterworth=squared_butterworth,
+                                  npad=npad,)
+
+    # keep_low = filters.butterworth(image, cutoff_frequency_ratio=cut_off_high, order=order,high_pass=False,
+    #                                squared_butterworth=squared_butterworth, npad=npad,)
+    # keep_high = filters.butterworth(image, cutoff_frequency_ratio=cut_off_low, order=order,high_pass=True,
+    #                                squared_butterworth=squared_butterworth, npad=npad,)
+    # return midband, keep_low, keep_high
+    return midband

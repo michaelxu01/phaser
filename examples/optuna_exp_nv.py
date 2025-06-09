@@ -21,7 +21,7 @@ from phaser.utils.misc import unwrap
 from phaser.plan import ReconsPlan, EnginePlan, EngineHook
 from phaser.state import ReconsState, PartialReconsState, Patterns
 from phaser.execute import Observer, initialize_reconstruction, prepare_for_engine
-
+from phaser.utils.analysis import get_filtered
 # prepare
 # pip install "redis[hiredis]"
 
@@ -32,54 +32,11 @@ MEASURE_START = 20
 MEASURE_EVERY = 10
 PATH = '/home/gridsan/jwei/CaO_Bi/acquisition_25/acquisition_25_of20nm.json'
 
-from skimage import filters
-def get_filtered(image, phase_real_samping_A, squared_butterworth=True, order=3.0, npad=0):
-    """Lowpass and highpass butterworth filtering at all specified cutoffs.
-    Parameters
-    ----------
-    image : ndarray
-        The image to be filtered.
-    cutoffs : sequence of float < 0.5
-        for lowpass and highpass filtering
-        frequency in `cutoffs`. as a fraction of the maximum frequency
-    squared_butterworth : bool, optional
-        Whether the traditional Butterworth filter or its square is used.
-    order : float, optional
-        The order of the Butterworth filter
 
-    Returns
-    -------
-    lowpass_filtered : ndarray
-        images lowpass filtered at the frequencies in `cutoffs`.
-    highpass_filtered : ndarray
-        images lowpass and then highpass filtered at the frequencies in `cutoffs`.
-    """
-    cut_off_low = min(1 / 0.3 * phase_real_samping_A, 0.49) # 0.3Å atomic diameter
-    cut_off_high = min( 1 / 7.0 * phase_real_samping_A, 0.49)
-    remove_high = filters.butterworth(image,
-                                      cutoff_frequency_ratio=cut_off_low,
-                                      order=order,
-                                      high_pass=False,
-                                      squared_butterworth=squared_butterworth,
-                                      npad=npad,)
-    midband = filters.butterworth(remove_high,
-                                  cutoff_frequency_ratio=cut_off_high,
-                                  order=order,
-                                  high_pass=True,
-                                  squared_butterworth=squared_butterworth,
-                                  npad=npad,)
-    keep_low = filters.butterworth(image, cutoff_frequency_ratio=cut_off_high, order=order,high_pass=False,
-                                   squared_butterworth=squared_butterworth, npad=npad,)
-    keep_high = filters.butterworth(image, cutoff_frequency_ratio=cut_off_low, order=order,high_pass=True,
-                                   squared_butterworth=squared_butterworth, npad=npad,)
-    return midband, keep_low, keep_high
-
-def calc_error_variance_band(state: t.Union[ReconsState, PartialReconsState], scalling = [1e2, 1e1, 1e4]) -> t.Tuple[float, NDArray[numpy.floating]]:
+def calc_error_variance_band(state: t.Union[ReconsState, PartialReconsState], scalling = 1e2) -> t.Tuple[float, NDArray[numpy.floating]]:
     """
     calculating the variance, not including normalization by mean here, good for cases that mean close to zero.
     so background level is not included in optimization
-    :param state:
-    :return:
     """
     object_state = unwrap(state.object).data
     xp = get_array_module(object_state)
@@ -87,23 +44,14 @@ def calc_error_variance_band(state: t.Union[ReconsState, PartialReconsState], sc
     exclude = int(object_state.shape[0] * 0.15)
     object_state_cut_surface = object_state[exclude:-exclude]
     phase = xp.angle(object_state_cut_surface)
-    nv_mid, nv_low, nv_high = [],[],[]
+    nv_mid = []
     for slice in phase:
-        midband, keep_low, keep_high = get_filtered(slice, state.object.sampling.sampling[0],
-                                                    squared_butterworth=True, order=3.0, npad=0)
-        nvs = (float((midband.std())**2),
-               float((keep_low.std())**2),
-               float((keep_high.std())**2))
-        nv_mid.append(nvs[0])
-        nv_low.append(nvs[1])
-        nv_high.append(nvs[2])
+        midband = get_filtered(slice, state.object.sampling.sampling[0],
+                               squared_butterworth=True, order=3.0, npad=0)
+        nv_mid.append(float((midband.std())**2))
 
     nv_mid = xp.array(nv_mid).mean()
-    # nv_low = xp.array(nv_low).mean()
-    # nv_high = xp.array(nv_high).mean()
-    error = 1 - nv_mid * scalling[0] # + nv_low * scalling[1] + nv_high * scalling[2]
-
-    # return  nv_mid * scalling[0], nv_low * scalling[1], nv_high * scalling[2], error
+    error = 1 - nv_mid * scalling
     return error
 
 def plot_diff(obj: numpy.ndarray, ground_truth: numpy.ndarray, error: float, fname: t.Union[str, Path, None] = None):
