@@ -13,7 +13,7 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from phaser.types import BackendName
-from .misc import jax_dataclass
+from .misc import tree_dataclass
 
 
 if t.TYPE_CHECKING:
@@ -624,7 +624,7 @@ def check_finite(*arrs: NDArray[numpy.inexact], context: t.Optional[str] = None)
         raise ValueError("NaN or inf encountered")
 
 
-@jax_dataclass(frozen=True, init=False, drop_fields=('extent',))
+@tree_dataclass(frozen=True, init=False, drop_fields=('extent',))
 class Sampling:
     shape: NDArray[numpy.int_]
     """Sampling shape (n_y, n_x)"""

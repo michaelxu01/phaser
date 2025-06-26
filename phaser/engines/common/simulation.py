@@ -10,7 +10,7 @@ from phaser.utils.num import (
     get_array_module, to_real_dtype, to_complex_dtype,
     fft2, ifft2, is_jax, to_numpy, block_until_ready, ufunc_outer
 )
-from phaser.utils.misc import FloatKey, jax_dataclass, create_compact_groupings, create_sparse_groupings, shuffled
+from phaser.utils.misc import FloatKey, tree_dataclass, create_compact_groupings, create_sparse_groupings, shuffled
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
 from phaser.hooks.solver import NoiseModel
@@ -83,7 +83,7 @@ def stream_patterns(
             continue
 
 
-@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'group_constraints', 'iter_constraints'), drop_fields=('ky', 'kx'))
+@tree_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'group_constraints', 'iter_constraints'), drop_fields=('ky', 'kx'))
 class SimulationState:
     state: ReconsState
 

@@ -36,6 +36,7 @@ dependencies = [
     "click~=8.1.0",
     "rich~=12.0.0",
     "tifffile>=2023.8.25",
+    "optree>=0.13.0",
     "py-pane==0.11.3",
     "typing_extensions~=4.7",
 ]
@@ -91,7 +92,7 @@ include = ["phaser*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "cuda: Run on CUDA backend",
+    "cupy: Run on Cupy backend",
     "jax: Run on jax backend",
     "torch: Run on PyTorch backend",
     "numpy: Run on numpy backend",

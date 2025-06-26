@@ -14,7 +14,7 @@ from typing_extensions import Self
 
 from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
 from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
-from .misc import create_rng, jax_dataclass
+from .misc import create_rng, tree_dataclass
 
 
 if t.TYPE_CHECKING:
@@ -186,7 +186,7 @@ def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArr
     return new_arr
 
 
-@jax_dataclass(frozen=True, init=False)
+@tree_dataclass(frozen=True, init=False)
 class ObjectSampling:
     shape: NDArray[numpy.int_]
     """Sampling shape `(n_y, n_x)`"""

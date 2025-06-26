@@ -219,7 +219,7 @@ class FloatKey(float):
 
 @t.overload
 @dataclass_transform(kw_only_default=False, frozen_default=False)
-def jax_dataclass(cls: t.Type[T], /, *,
+def tree_dataclass(cls: t.Type[T], /, *,
     init: bool = True, kw_only: bool = False, frozen: bool = False,
     static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
 ) -> t.Type[T]:
@@ -227,18 +227,18 @@ def jax_dataclass(cls: t.Type[T], /, *,
 
 @t.overload
 @dataclass_transform(kw_only_default=False, frozen_default=False)
-def jax_dataclass(*,
+def tree_dataclass(*,
     init: bool = True, kw_only: bool = False, frozen: bool = False,
     static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
 ) -> t.Callable[[t.Type[T]], t.Type[T]]:
     ...
 
-def jax_dataclass(cls: t.Optional[t.Type[T]] = None, /, *,
+def tree_dataclass(cls: t.Optional[t.Type[T]] = None, /, *,
     init: bool = True, kw_only: bool = False, frozen: bool = False,
     static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
 ) -> t.Union[t.Type[T], t.Callable[[t.Type[T]], t.Type[T]]]:
     if cls is None:
-        return lambda cls: jax_dataclass(cls, init=init, kw_only=kw_only, frozen=frozen,
+        return lambda cls: tree_dataclass(cls, init=init, kw_only=kw_only, frozen=frozen,
                                          static_fields=static_fields, drop_fields=drop_fields)
 
     cls = dataclasses.dataclass(init=init, kw_only=kw_only, frozen=frozen)(cls)
@@ -246,12 +246,13 @@ def jax_dataclass(cls: t.Optional[t.Type[T]] = None, /, *,
     return cls
 
 
-def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: t.Sequence[str]):
-    try:
-        from jax.tree_util import register_pytree_with_keys
-    except ImportError:
-        return
+def _wrap_flatten_with_keys(
+    ty: t.Callable[[str], T], trees: list[tuple[str, t.Any]], meta: t.Hashable
+) -> tuple[list[tuple[T, t.Any]], t.Any]:
+    return [(ty(k), v) for (k, v) in trees], meta
 
+
+def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: t.Sequence[str]):
     fields = dataclasses.fields(cls)
     field_names = {field.name for field in fields}
 
@@ -262,9 +263,9 @@ def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: 
 
     data_fields = tuple(field_names.difference(static_fields).difference(drop_fields))
 
-    def flatten_with_keys(x: t.Any, /) -> tuple[t.Iterable[tuple[str, t.Any]], t.Hashable]:
+    def flatten_with_keys(x: t.Any, /) -> tuple[list[tuple[str, t.Any]], t.Hashable]:
         meta = tuple(getattr(x, name) for name in static_fields)
-        trees = tuple((name, getattr(x, name)) for name in data_fields)
+        trees = list((name, getattr(x, name)) for name in data_fields)
         return trees, meta
 
     def unflatten(meta: t.Hashable, trees: t.Iterable[t.Any], /) -> t.Any:
@@ -274,12 +275,28 @@ def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: 
         data_args = dict(zip(data_fields, trees, strict=True))
         return cls(**static_args, **data_args)
 
-    def flatten(x: t.Any, /) -> tuple[t.Iterable[t.Any], t.Hashable]:
+    def flatten(x: t.Any, /) -> tuple[list[t.Any], t.Hashable]:
         hashed = tuple(getattr(x, name) for name in static_fields)
-        trees = tuple(getattr(x, name) for name in data_fields)
+        trees = list(getattr(x, name) for name in data_fields)
         return trees, hashed
 
-    register_pytree_with_keys(cls, flatten_with_keys, unflatten, flatten)
+    try:
+        from jax.tree_util import register_pytree_with_keys
+    except ImportError:
+        pass
+    else:
+        register_pytree_with_keys(cls, flatten_with_keys, unflatten, flatten)
+
+    try:
+        from torch.utils._pytree import register_pytree_node, MappingKey, KeyEntry
+    except ImportError:
+        pass
+    else:
+        register_pytree_node(
+            cls, flatten, unflatten,
+            flatten_with_keys_fn=lambda v: _wrap_flatten_with_keys(t.cast(t.Callable[[str], KeyEntry], MappingKey), *flatten_with_keys(v))
+        )
+
 
 
 def unwrap(val: t.Optional[T]) -> T:
@@ -291,5 +308,5 @@ __all__ = [
     'create_rng', 'create_rng_group',
     'create_sparse_groupings', 'create_compact_groupings',
     'mask_fraction_of_groups', 'FloatKey',
-    'jax_dataclass', 'unwrap',
+    'tree_dataclass', 'unwrap',
 ]

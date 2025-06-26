@@ -2,13 +2,13 @@
 import pytest
 import numpy
 
-BACKENDS: set[str] = set(('cpu', 'jax', 'cuda', 'torch'))
+BACKENDS: set[str] = set(('cpu', 'jax', 'cupy', 'torch'))
 AVAILABLE_BACKENDS: set[str] = set(('cpu',))
 
 try:
     import cupy  # pyright: ignore[reportMissingImports]
     if cupy.cuda.runtime.getDeviceCount() > 0:
-        AVAILABLE_BACKENDS.add('cuda')
+        AVAILABLE_BACKENDS.add('cupy')
 except ImportError:
     pass
 

@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from typing_extensions import Self
 
 from phaser.hooks.solver import NoiseModel
-from phaser.utils.misc import jax_dataclass
+from phaser.utils.misc import tree_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
     fft2, ifft2, abs2, check_finite, at, Float, to_real_dtype
@@ -128,7 +128,7 @@ def filter_vars(d: t.Dict[ReconsVar, t.Any], vars: t.AbstractSet[ReconsVar]) -> 
     return {k: v for (k, v) in d.items() if k in vars}
 
 
-@jax_dataclass
+@tree_dataclass
 class SolverStates:
     noise_model_state: t.Any
     group_solver_states: t.List[t.Any]
