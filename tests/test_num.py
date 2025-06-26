@@ -14,7 +14,7 @@ from phaser.utils.num import (
 )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_get_array_module(backend: BackendName):
     expected = get_backend_module(backend)
 
@@ -22,7 +22,7 @@ def test_get_array_module(backend: BackendName):
         # on numpy, pretend cupy and jax don't exist
         'numpy': {'cupy', 'jax', 'torch'},
         'jax': {},
-        'cuda': {},
+        'cupy': {},
         'torch': {},
     }[backend]
 
@@ -37,7 +37,7 @@ def test_get_array_module(backend: BackendName):
         ) is expected
 
 
-@with_backends('numpy', 'jax', 'cuda')
+@with_backends('numpy', 'jax', 'cupy')
 def test_get_scipy_module(backend: BackendName):
     import scipy
 
@@ -48,7 +48,7 @@ def test_get_scipy_module(backend: BackendName):
         # on cpu, pretend cupyx doesn't exist
         'numpy': {'cupyx'},
         'jax': {},
-        'cuda': {},
+        'cupy': {},
     }[backend]
 
     assert get_scipy_module() is scipy
@@ -100,7 +100,7 @@ def test_to_complex_dtype_invalid():
         to_complex_dtype(numpy.int_)
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_fft2(backend: BackendName):
     xp = get_backend_module(backend)
 
@@ -127,7 +127,7 @@ def test_fft2(backend: BackendName):
     )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_ifft2(backend: BackendName):
     xp = get_backend_module(backend)
 
@@ -156,7 +156,7 @@ def test_ifft2(backend: BackendName):
     )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_abs2(backend: BackendName):
     xp = get_backend_module(backend)
 
@@ -175,7 +175,7 @@ def test_abs2(backend: BackendName):
     )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_to_numpy(backend: BackendName):
     xp = get_backend_module(backend)
 
@@ -187,7 +187,7 @@ def test_to_numpy(backend: BackendName):
     )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_to_array(backend: BackendName):
     xp = get_backend_module(backend)
 

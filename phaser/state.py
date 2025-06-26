@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from typing_extensions import Self
 
 from phaser.utils.num import Sampling, to_numpy, get_array_module, Float
-from phaser.utils.misc import jax_dataclass
+from phaser.utils.misc import tree_dataclass
 from phaser.utils.object import ObjectSampling
 
 if t.TYPE_CHECKING:
@@ -13,7 +13,7 @@ if t.TYPE_CHECKING:
     from phaser.utils.image import _BoundaryMode
 
 
-@jax_dataclass
+@tree_dataclass
 class Patterns():
     patterns: NDArray[numpy.floating]
     """Raw diffraction patterns, with 0-frequency sample in corner"""
@@ -26,7 +26,7 @@ class Patterns():
         )
 
 
-@jax_dataclass
+@tree_dataclass
 class IterState():
     engine_num: int
     """Engine number. 1-indexed (0 means before any reconstruction)."""
@@ -49,7 +49,7 @@ class IterState():
         return IterState(0, 0, 0)
 
 
-@jax_dataclass(static_fields=('sampling',))
+@tree_dataclass(static_fields=('sampling',))
 class ProbeState():
     sampling: Sampling
     """Probe coordinate system. See `Sampling` for more details."""
@@ -85,7 +85,7 @@ class ProbeState():
         return copy.deepcopy(self)
 
 
-@jax_dataclass(static_fields=('sampling',))
+@tree_dataclass(static_fields=('sampling',))
 class ObjectState():
     sampling: ObjectSampling
     """Object coordinate system. See `ObjectSampling` for more details."""
@@ -118,7 +118,7 @@ class ObjectState():
         return copy.deepcopy(self)
 
 
-@jax_dataclass
+@tree_dataclass
 class ProgressState:
     iters: NDArray[numpy.integer]
     """Iterations error measurements were taken at."""
@@ -154,7 +154,7 @@ class ProgressState:
             xp.array_equal(self.detector_errors, other.detector_errors)
         )
 
-@jax_dataclass(kw_only=True, static_fields=('progress',))
+@tree_dataclass(kw_only=True, static_fields=('progress',))
 class ReconsState:
     iter: IterState
     wavelength: Float
@@ -199,7 +199,7 @@ class ReconsState:
         return hdf5_read_state(file).to_complete()
 
 
-@jax_dataclass(kw_only=True, static_fields=('progress',))
+@tree_dataclass(kw_only=True, static_fields=('progress',))
 class PartialReconsState:
     iter: t.Optional[IterState] = None
     wavelength: t.Optional[Float] = None

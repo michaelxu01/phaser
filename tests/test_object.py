@@ -9,7 +9,7 @@ from phaser.utils.num import get_backend_module, BackendName, to_numpy, abs2
 from phaser.utils.object import random_phase_object, ObjectSampling
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_random_phase_object(backend: BackendName):
     xp = get_backend_module(backend)
 
@@ -144,7 +144,7 @@ def test_object_slicing():
     )
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_get_views_{dtype}.npy', out_name='object_get_views_{dtype}_{backend}.npy')
 def test_get_cutouts(backend: BackendName, dtype: str) -> numpy.ndarray:
@@ -174,7 +174,7 @@ def test_get_cutouts(backend: BackendName, dtype: str) -> numpy.ndarray:
 
     return to_numpy(samp.cutout(obj, pos, cutout_shape).get())
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_add_views_{dtype}.tiff', out_name='object_add_views_{dtype}_{backend}.tiff', decimal=5)
 def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
@@ -247,7 +247,7 @@ def test_add_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
     return to_numpy(obj)
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_cutout_2d(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
@@ -263,7 +263,7 @@ def test_cutout_2d(backend: BackendName):
     cutouts.set(cutouts.get())
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 def test_cutout_multidim(backend: BackendName):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (80, 100)
@@ -296,7 +296,7 @@ def test_cutout_multidim(backend: BackendName):
     cutouts.set(cutouts.get())
 
 
-@with_backends('numpy', 'jax', 'cuda', 'torch')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
 def test_set_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
