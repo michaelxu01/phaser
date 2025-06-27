@@ -12,7 +12,7 @@ from phaser.hooks.solver import NoiseModel
 from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float
+    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
 )
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.io import OutputDir
@@ -24,11 +24,11 @@ from phaser.hooks.regularization import CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.output import output_images, output_state
-from ..common.simulation import GroupManager, stream_patterns, make_propagators, slice_forwards
+from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
 
 
 logger = logging.getLogger(__name__)
-_PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'positions'})
+_PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'positions', 'tilt'})
 
 
 def process_solvers(
@@ -74,6 +74,7 @@ _PATH_MAP: t.Dict[t.Tuple[str, ...], ReconsVar] = {
     ('object', 'data'): 'object',
     ('probe', 'data'): 'probe',
     ('scan',): 'positions',
+    ('tilt',): 'tilt'
 }
 
 def extract_vars(state: ReconsState, vars: t.AbstractSet[ReconsVar], group: t.Optional[NDArray[numpy.integer]] = None) -> t.Tuple[t.Dict[ReconsVar, t.Any], ReconsState]:
@@ -120,6 +121,11 @@ def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -
         update['positions'] -= xp.mean(update['positions'], tuple(range(update['positions'].ndim - 1)))
         logger.info(f"Position update: mean {xp.mean(xp.linalg.norm(update['positions'], axis=-1))}")
         state.scan += update['positions']
+    if 'tilt' in update:
+        xp = get_array_module(update['tilt'])
+        mean_tilt_update = xp.mean(xp.abs(update['tilt']), tuple(range(update['tilt'].ndim - 1)))
+        logger.info(f"Tilt update: mean {mean_tilt_update} mrad")
+        state.tilt += update['tilt']
 
     return state
 
@@ -185,6 +191,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         'probe': process_flag(props.update_probe),
         'object': process_flag(props.update_object),
         'positions': process_flag(props.update_positions),
+        'tilt': process_flag(props.update_tilt),
     }
     save = process_flag(props.save)
     save_images = process_flag(props.save_images)
@@ -377,7 +384,7 @@ def run_model(
     vars: t.Dict[ReconsVar, t.Any],
     sim: ReconsState,
     group: NDArray[numpy.integer],
-    props: t.Optional[NDArray[numpy.complexfloating]],
+    props: t.Optional[NDArray[numpy.complexfloating]], # base propagator, shape (n_slices-1, ny, nx)
     group_patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
     noise_model: NoiseModel[t.Any],
@@ -389,20 +396,28 @@ def run_model(
     # apply vars to simulation
     sim = insert_vars(vars, sim, group)
     group_scan = sim.scan
+    group_tilts = sim.tilt
 
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
+    delta_zs = sim.object.thicknesses[:-1]
+    xp = get_array_module(sim.probe.data)
+    dtype = to_real_dtype(sim.probe.data.dtype)
+    complex_dtype = to_complex_dtype(dtype)
+
     probes = sim.probe.data
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, group_scan, probes.shape[-2:])
     group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(group_scan, probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
+    
+    t_props = tilt_propagators(sim, props, group_tilts, kx, ky, delta_zs,)
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
+        # psi: (batch, n_probe, Ny, Nx)
         if prop is not None:
-            return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop)
-
+            return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
@@ -432,19 +447,20 @@ def dry_run(
     dtype: t.Type[numpy.floating],
 ) -> NDArray[numpy.floating]:
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
+    delta_zs = sim.object.thicknesses[:-1]
+
     probes = sim.probe.data
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[tuple(group)], probes.shape[-2:])
     group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[tuple(group)], probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
+    t_props = tilt_propagators(sim, props, sim.tilt[tuple(group)], kx, ky, delta_zs)
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
-            return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop)
-
+            return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
-    # sum over incoherent modes and over the pattern
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
     exp_intensity = xp.sum(xp.array(patterns[tuple(group)]), axis=(-2, -1))
 

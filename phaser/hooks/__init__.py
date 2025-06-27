@@ -4,6 +4,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray, DTypeLike
 import pane.annotations as annotations
+from typing_extensions import NotRequired
 
 from ..types import Dataclass, Slices
 from .hook import Hook
@@ -19,10 +20,11 @@ class RawData(t.TypedDict):
     patterns: NDArray[numpy.floating]
     mask: NDArray[numpy.floating]
     sampling: 'Sampling'
-    wavelength: t.Optional[float]
-    scan_hook: t.Union[t.Dict[str, t.Any], None]
-    probe_hook: t.Union[t.Dict[str, t.Any], None]
-    seed: t.Optional[object]
+    wavelength: NotRequired[t.Optional[float]]
+    scan_hook: NotRequired[t.Union[t.Dict[str, t.Any], None]]
+    tilt_hook: NotRequired[t.Union[t.Dict[str, t.Any], None]]
+    probe_hook: NotRequired[t.Union[t.Dict[str, t.Any], None]]
+    seed: NotRequired[t.Optional[object]]
 
 
 class LoadEmpadProps(Dataclass):
@@ -93,6 +95,32 @@ class RasterScanProps(Dataclass):
 class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
     known = {
         'raster': ('phaser.hooks.scan:raster_scan', RasterScanProps),
+    }
+
+
+class TiltHookArgs(t.TypedDict):
+    dtype: DTypeLike
+    xp: t.Any
+    shape: t.Tuple[int, ...]  # To match raster scan shape
+
+
+class GlobalTiltProps(Dataclass):
+    tilt: t.Annotated[
+        NDArray[numpy.floating],
+        annotations.shape((2,))
+    ]
+    """global [ty, tx] in mrad"""
+
+
+class CustomTiltProps(Dataclass):
+    path: str
+    """Path to .npy file containing tilt array matching the size of the scan"""
+
+
+class TiltHook(Hook[TiltHookArgs, NDArray[numpy.floating]]):
+    known = {
+        'global': ('phaser.hooks.tilt:generate_global_tilt', GlobalTiltProps),
+        'custom': ('phaser.hooks.tilt:load_custom_tilt', CustomTiltProps),
     }
 
 
