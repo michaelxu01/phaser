@@ -138,7 +138,7 @@ class WorkersUpdate(pane.PaneBase):
     msg: t.Literal['workers_update'] = 'workers_update'
 
 class JobsUpdate(pane.PaneBase):
-    event: JobMessage
+    event: t.Optional[JobMessage]
     state: t.List[JobState]
 
     msg: t.Literal['jobs_update'] = 'jobs_update'

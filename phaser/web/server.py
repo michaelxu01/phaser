@@ -127,7 +127,8 @@ class Worker(Subscribable[WorkerUpdate]):
         return OkResponse()
 
     async def finalize(self):
-        pass
+        if self.status not in ('stopped', 'unknown'):
+            logging.error(f"Job {self.id} finalized before completion")
 
 
 class LocalWorker(Worker):
@@ -304,11 +305,19 @@ class Job(Subscribable[JobMessage]):
     def should_cancel(self) -> bool:
         return self.status == 'stopping'
 
+    async def delete(self):
+        if self.status not in ('queued', 'stopped'):
+            raise RuntimeError("Cannot delete a running job")
+        if self.status != 'stopped':
+            await self.set_status('stopped')
+        await server.jobs.remove(self.id)
+
     def state(self, full: bool = False) -> JobState:
         state = self.cache if full else {}
         return JobState.make_unchecked(self.id, self.status, {
             'dashboard': url_for('job_dashboard', job_id=self.id),
             'cancel': url_for('cancel_job', job_id=self.id), 
+            'delete': url_for('delete_job', job_id=self.id), 
             'logs': url_for('job_logs', job_id=self.id),
         }, state=state)
 
@@ -332,6 +341,10 @@ class Job(Subscribable[JobMessage]):
             await self.message_subscribers(
                 JobStopped(msg.result, msg.error)
             )
+
+    async def finalize(self):
+        if self.status != 'stopped':
+            logging.error(f"Job {self.id} finalized before completion")
 
 
 class Jobs(Subscribable[JobsUpdate]):
@@ -360,6 +373,17 @@ class Jobs(Subscribable[JobsUpdate]):
             JobsUpdate.make_unchecked(event, self.state())
         )
 
+    async def remove(self, job_id: JobID):
+        try:
+            job = self.inner.pop(job_id)
+        except KeyError:
+            return
+
+        await job.finalize()
+        await self.message_subscribers(
+            JobsUpdate(None, self.state())
+        )
+
     def __contains__(self, item: JobID) -> bool:
         return self.inner.__contains__(item)
 
@@ -378,6 +402,7 @@ class Jobs(Subscribable[JobsUpdate]):
     async def finalize(self):
         for fut in self._futs:
             fut.cancel()
+        await asyncio.gather(*(job.finalize() for job in self.inner.values()))
 
 
 _ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"

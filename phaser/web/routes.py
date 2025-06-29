@@ -87,7 +87,7 @@ async def start_job():
         except ValidationError as e:
             abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
     else:
-        raise abort(Response(f"Unknown source type {source}", 400))
+        abort(Response(f"Unknown source type {source}", 400))
 
     return json_response({
         'result': 'success',
@@ -109,6 +109,19 @@ async def cancel_job(job_id: JobID):
         await job.cancel()
     except KeyError:
         pass
+
+    return json_response(OkResponse())
+
+@app.post("/job/<string:job_id>/delete")
+async def delete_job(job_id: JobID):
+    try:
+        job = server.jobs[job_id]
+    except KeyError:
+        abort(404)
+
+    if job.status not in ('queued', 'stopped'):
+        abort(Response(f"Cannot delete a running job", 400))
+    await job.delete()
 
     return json_response(OkResponse())
 
