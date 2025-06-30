@@ -191,34 +191,33 @@ def make_propagators(state: ReconsState, bwlim_frac: t.Optional[float] = 2/3) ->
 
 
 def tilt_propagators(
+    ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     state: ReconsState, 
-    base_props: t.Optional[NDArray[numpy.complexfloating]],  # shape: (Nz-1, Ny, Nx)
-    group_tilts: NDArray[numpy.floating],                    # shape: (batch, 2), in mrad
-    kx: NDArray[numpy.floating],                             # shape: (Ny, Nx)
-    ky: NDArray[numpy.floating],                             # shape: (Ny, Nx)
-    delta_zs: NDArray[numpy.floating],                       # shape: (Nz-1)
+    props: t.Optional[NDArray[numpy.complexfloating]],  # shape: (Nz-1, Ny, Nx)
+    tilts: NDArray[numpy.floating]                      # shape: (..., 2), in mrad
 ) -> t.Optional[NDArray[numpy.complexfloating]]:
     """
-    Applies tilt and slice-dependent propagation phase shifts to base_props.
+    Applies tilt and slice-dependent propagation phase shifts to props.
     -------
     NDArray[complex] or None
-        Tilted propagators of shape (batch, Nz-1, Ny, Nx), or None if no slices.
+        Tilted propagators of shape (n_layers-1, ..., Ny, Nx), or None if no slices.
     """
-    if base_props is None:
+    if props is None:
         return None
 
     xp = get_array_module(state.probe.data)
     dtype = to_real_dtype(state.probe.data.dtype)
     complex_dtype = to_complex_dtype(dtype)
+    delta_zs = state.object.thicknesses[:-1]
 
-    tilt_ramps = xp.exp(  # (batch, Nz-1, Ny, Nx)
-        2.j * xp.pi * delta_zs[:, None, None] * (
-            ufunc_outer(xp.multiply, xp.tan(group_tilts[:, 0] * 1e-3), ky)[:, None, ...] +
-            ufunc_outer(xp.multiply, xp.tan(group_tilts[:, 1] * 1e-3), kx)[:, None, ...]
-        )
+    tilt_ramps = xp.exp(  # (n_layers-1, batch, Ny, Nx)
+        2.j * xp.pi * ufunc_outer(xp.multiply, delta_zs, (
+            ufunc_outer(xp.multiply, xp.tan(tilts[..., 0] * 1e-3), ky) +
+            ufunc_outer(xp.multiply, xp.tan(tilts[..., 1] * 1e-3), kx)
+        ))
     )
 
-    return base_props[None, ...] * tilt_ramps.astype(complex_dtype) 
+    return props[(slice(None), *(None,)*(tilts.ndim - 1), Ellipsis)] * tilt_ramps.astype(complex_dtype)
 
 
 @t.overload
@@ -267,13 +266,13 @@ def slice_forwards(
     if props is None:
         return f(0, None, state)
 
-    n_slices = props.shape[1] + 1  # props shape: (batch, Nz-1, Ny, Nx)
+    # props shape: (N_slices - 1, [batch], Ny, Nx)
+    n_slices = len(props) + 1
 
     if is_jax(props):
         import jax
         def step_fn(carry, slice_i):
-            # props[:, slice_i] has shape (batch, Ny, Nx)
-            new_state = f(slice_i, props[:, slice_i], carry)
+            new_state = f(slice_i, props[slice_i], carry)
             return new_state, None
 
         state, _ = jax.lax.scan(step_fn, state, jax.numpy.arange(n_slices - 1))
@@ -281,7 +280,7 @@ def slice_forwards(
 
     # fallback numpy mode
     for slice_i in range(n_slices - 1):
-        state = f(slice_i, props[:, slice_i], state)
+        state = f(slice_i, props[slice_i], state)
     return f(n_slices - 1, None, state)
 
 

@@ -11,7 +11,7 @@ from phaser.types import process_schedule
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
 from phaser.engines.common.simulation import (
-    stream_patterns, SimulationState, cutout_group, slice_forwards, slice_backwards
+    stream_patterns, SimulationState, cutout_group, tilt_propagators, slice_forwards, slice_backwards
 )
 
 
@@ -151,10 +151,11 @@ def lsqml_dry_run(
         )
 
         if prop is not None:
-            psi = ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop)
+            psi = ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
 
         return (probe_mag, psi)
 
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
     (probe_mag, psi) = slice_forwards(props, (probe_mag, psi), run_slice)
 
     # modeled and experimental intensity
@@ -214,11 +215,12 @@ def lsqml_run(
 
         if prop is not None:
             psi = at(psi, slice_i + 1).set(
-                ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop)
+                ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop[:, None])
             )
 
         return (group_probe_mag, psi)
 
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
     (group_probe_mag, psi) = slice_forwards(props, (group_probe_mag, psi), sim_slice)
 
     new_obj_mag += group_obj_mag
@@ -253,7 +255,7 @@ def lsqml_run(
             sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
 
         if prop is not None:
-            chi = ifft2(fft2(delta_P) * prop.conj())
+            chi = ifft2(fft2(delta_P) * prop.conj()[:, None])
         elif update_probe:
             delta_P_avg = ifft2(xp.sum(fft2(delta_P) * subpx_filters.conj(), axis=0))
             delta_P_avg /= (group_obj_mag + illum_reg_probe)
@@ -392,10 +394,11 @@ def epie_dry_run(
 
     def run_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
-            psi = ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop)
+            psi = ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
 
         return psi
 
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
     psi = slice_forwards(props, psi, run_slice)
 
     # modeled and experimental intensity
@@ -431,11 +434,12 @@ def epie_run(
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
             psi = at(psi, slice_i + 1).set(
-                ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop)
+                ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop[:, None])
             )
 
         return psi
 
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
     psi = slice_forwards(props, psi, sim_slice)
 
     model_wave = fft2(psi[-1] * group_obj[:, -1, None])
@@ -468,7 +472,7 @@ def epie_run(
             )
 
         if prop is not None:
-            chi = ifft2(fft2(probe_update) * prop.conj())
+            chi = ifft2(fft2(probe_update) * prop.conj()[:, None])
         elif update_probe:
             # average probe updates in group
             probe_update = ifft2(xp.mean(fft2(probe_update) * subpx_filters.conj(), axis=0))

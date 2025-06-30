@@ -1,6 +1,6 @@
 
 import numpy
-from numpy.testing import assert_array_almost_equal
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 import pytest
 
 from .utils import with_backends, get_backend_module, get_backend_scipy, mock_importerror
@@ -9,7 +9,8 @@ from phaser.utils.num import (
     get_array_module, get_scipy_module,
     to_real_dtype, to_complex_dtype,
     fft2, ifft2, abs2,
-    to_numpy, as_array
+    to_numpy, as_array,
+    ufunc_outer
 )
 
 
@@ -198,3 +199,15 @@ def test_to_array(backend: str):
         arr,
         numpy.array([1., 2., 3., 4.])
     )
+
+
+@with_backends('cpu', 'jax', 'cuda')
+def test_ufunc_outer(backend: str):
+    xp = get_backend_module(backend)
+
+    xs = numpy.arange(12).reshape(4, 3)
+    ys = numpy.arange(30).reshape(5, 6)
+
+    expected = numpy.multiply.outer(xs, ys)
+    actual = to_numpy(ufunc_outer(xp.multiply, xp.array(xs), xp.array(ys)))
+    assert_array_equal(expected, actual)
