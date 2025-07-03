@@ -155,6 +155,29 @@ def _cross_correlate(x: NDArray[numpy.floating], y: NDArray[numpy.floating], max
     x = xx.ravel()[max_i]
     return (float(y), float(x))
 
+@t.overload
+def align_object_to_ground_truth(
+    object: ObjectState,
+    ground_truth: NDArray[numpy.floating],
+    ground_truth_sampling: ArrayLike,
+    rotation_angle: float = 0.0,
+    refinement_niter: int = 0,
+    order: int = 1,
+    return_crop: t.Literal[False] = False,
+) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
+    ...
+
+@t.overload
+def align_object_to_ground_truth(
+    object: ObjectState,
+    ground_truth: NDArray[numpy.floating],
+    ground_truth_sampling: ArrayLike,
+    rotation_angle: float = 0.0,
+    refinement_niter: int = 0,
+    order: int = 1,
+    return_crop: t.Literal[True] = True,
+) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], t.Tuple[slice, slice]]:
+    ...
 
 def align_object_to_ground_truth(
     object: ObjectState,
@@ -163,7 +186,8 @@ def align_object_to_ground_truth(
     rotation_angle: float = 0.0,
     refinement_niter: int = 0,
     order: int = 1,
-) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
+    return_crop: bool = False,
+) -> t.Union[t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]], t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], t.Tuple[slice, slice]]]:
     """
     ground_truth: Ground truth phase (in radians, or radians/angstrom for multislice data)
 
@@ -218,6 +242,8 @@ def align_object_to_ground_truth(
     if refinement_niter == 0:
         # perform final upsampling
         upsamp_obj = object.sampling.resample(object_phase, ground_truth_samp, cval=0., rotation=rotation_angle, order=order)
+        if return_crop:
+            return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)], crop
         return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
 
     import scipy.optimize
@@ -260,4 +286,7 @@ Refinement result: {result.message}
 
     # perform final upsampling
     upsamp_obj = object.sampling.resample(object_phase, ground_truth_samp, cval=0., affine=affine, order=order)
+
+    if return_crop:
+        return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)], crop
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]

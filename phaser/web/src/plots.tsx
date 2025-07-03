@@ -4,18 +4,15 @@ import { useAtomValue, PrimitiveAtom } from 'jotai';
 import { np } from './wasm-array';
 import { ProbeData, ObjectData, ProgressData } from './types';
 import { PlotScale, LogPlotScale } from './plotting/scale';
-import { Figure, PlotGrid, Plot, AxisSpec, ColorScale, PlotImage, PlotLine, makeId } from './plotting/plot';
+import { Figure, PlotList, Plot, AxisSpec, ColorScale, PlotImage, PlotLine, makeId, styles } from './plotting/plot';
 import { Colorbar } from './plotting/colorbar';
 import { HBox } from './components';
 import Scalebar from './plotting/scalebar';
+import { useElementSize } from '@mantine/hooks';
 
 
-interface ObjectPlotProps {
-    state: PrimitiveAtom<ObjectData | null>
-}
-
-export function ObjectPlot(props: ObjectPlotProps) {
-    let object = useAtomValue(props.state);
+export function ObjectPlot({state}: {state: PrimitiveAtom<ObjectData | null>}) {
+    let object = useAtomValue(state);
     if (!object || !np) return <div></div>;
     return <ObjectPlotSub object={object} />;
 }
@@ -104,6 +101,8 @@ export function ProbePlot(props: ProbePlotProps) {
 function ProbePlotSub({probes}: {probes: ProbeData}) {
     let probes_data = probes.data;
 
+    const { ref, width = 1 } = useElementSize<HTMLDivElement>();
+
     const [nprobes, ny, nx] = probes_data.shape.values();
 
     const intensities = np!.abs2(probes_data);
@@ -140,24 +139,22 @@ function ProbePlotSub({probes}: {probes: ProbeData}) {
         return <Plot key={i}><PlotImage data={intensity} scale="intensity"/>{scalebar}</Plot>;
     });
 
+    const listWidth = width - 200; // subtract colorbar width
+
     return <Figure axes={axes} scales={scales}>
-        <HBox>
-            <PlotGrid ncols={nprobes} nrows={1} xaxes="x" yaxes="y">
+        <HBox ref={ref as React.RefObject<HTMLDivElement>}>
+            <PlotList xaxis="x" yaxis="y" maxWidth={listWidth}>
                 {plots}
-            </PlotGrid>
+            </PlotList>
             <Colorbar scale="intensity" length={100}/>
         </HBox>
     </Figure>;
 }
 
-interface ProgressPlotProps {
-    state: PrimitiveAtom<ProgressData | null>
-}
 
-export function ProgressPlot(props: ProgressPlotProps) {
-    const progress = useAtomValue(props.state);
+export function ProgressPlot({state}: {state: PrimitiveAtom<ProgressData | null>}) {
+    const progress = useAtomValue(state);
     if (!progress || !np) return <div></div>;
-
     return <ProgressPlotSub progress={progress} />;
 }
 
@@ -171,7 +168,7 @@ function ProgressPlotSub({progress}: {progress: ProgressData}) {
     const x_max = Math.max(10, ...xs.filter(isFinite));
     const ys_filt = ys.filter(isFinite);
 
-    let y_min, y_max;
+    let y_min: number, y_max: number;
     if (ys_filt.length) {
         [y_min, y_max] = [Math.min(...ys_filt), Math.max(...ys_filt)];
     } else {
@@ -187,13 +184,15 @@ function ProgressPlotSub({progress}: {progress: ProgressData}) {
         ["error", {
             scale: (new LogPlotScale([y_max, y_min], [0.0, 300.0])).pad_frac(0.1),
             label: "Error",
+            labelOffset: 110,
             show: true,
+            tickFormat: ".2e",
         }],
     ]), [x_max, y_max, y_min]);
 
     return <Figure axes={axes}>
         <Plot xaxis="iter" yaxis="error">
-            <marker id={markerId} viewBox="0 0 10 10" refX="5" refY="5" className="plot-marker">
+            <marker id={markerId} viewBox="0 0 10 10" refX="5" refY="5" className={styles["plot-marker"]}>
                 <circle cx={5} cy={5} r={4}/>
             </marker>
             <PlotLine xs={xs} ys={ys} markerStart={markerRef} markerMid={markerRef} markerEnd={markerRef}/>

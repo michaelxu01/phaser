@@ -659,14 +659,21 @@ class _ScalebarTransform(Affine2DBase):
         return self._mtx
 
 
-def add_scalebar(ax: 'Axes', size: float, height: float = 0.05):
+def add_scalebar(
+    ax: 'Axes', size: float, *, loc: t.Literal['top', 'bot', 'bottom'] = 'bottom',
+    height: float = 0.05, label: t.Optional[str] = None
+):
     from matplotlib.patches import Rectangle
-    ax.add_patch(Rectangle((0.0, 0.0), size, height, fc='white', ec='black', linewidth=2.0, transform=_ScalebarTransform(ax, (0.04, 0.06))))
+    if loc not in ('top', 'bot', 'bottom'):
+        raise ValueError(f"Unknown location '{loc}'. Expected one of 'top', 'bot', or 'bottom'.")
 
+    origin = (0.04, 1.0 - 0.06 - height) if loc == 'top' else (0.04, 0.06)
 
-def add_scalebar_top(ax: 'Axes', size: float, height: float = 0.05):
-    from matplotlib.patches import Rectangle
-    ax.add_patch(Rectangle((0.0, 0.0), size, height, fc='white', ec='black', linewidth=2.0, transform=_ScalebarTransform(ax, (0.04, 1.0 - 0.06 - height))))
+    ax.add_patch(Rectangle((0.0, 0.0), size, height, fc='white', ec='black', linewidth=2.0, transform=_ScalebarTransform(ax, origin)))
+    if label is not None:
+        text_origin = (origin[0] + 0.02, origin[1] + (-0.02 if loc == 'top' else height + 0.01))
+        text_va = 'top' if loc == 'top' else 'bottom'
+        label_inside_ax(ax, label, text_origin, va=text_va, fontsize=12.0)
 
 
 def label_inside_ax(ax: 'Axes', text: str, pos: t.Tuple[float, float] = (0.02, 0.95), color: t.Any = 'white',
@@ -694,6 +701,6 @@ __all__ = [
     'plot_object_phase', 'plot_object_mag',
     'plot_metrics',
 
-    'add_scalebar', 'add_scalebar_top',
+    'add_scalebar',
     'ColormapLike', 'NormLike',
 ]

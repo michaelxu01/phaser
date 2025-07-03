@@ -57,6 +57,7 @@ async def start_worker(worker_type: str):
     elif worker_type == 'local':
         worker = LocalWorker(worker_id, server.get_worker_url(worker_id))
     elif worker_type == 'slurm':
+        await asyncio.sleep(10)
         if sys.platform not in ('linux', 'darwin'):
             abort(Response(f"Slurm not supported on platform '{sys.platform}'", 400))
         try:
@@ -80,12 +81,12 @@ async def start_job():
         try:
             jobs = await Job.from_path(d['path'])
         except ValidationError as e:
-            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=400))
     elif source == 'yaml':
         try:
             jobs = await Job.from_yaml(d['data'])
         except ValidationError as e:
-            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=400))
     else:
         abort(Response(f"Unknown source type {source}", 400))
 

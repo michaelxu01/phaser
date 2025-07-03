@@ -74,7 +74,7 @@ def validate(path: t.Union[str, Path], json: bool = False):
         from json import dump
         dump({
             'result': 'success',
-            'plans': [plan.into_data() for plan in plans],
+            'plans': [(plan.name, plan.into_data()) for plan in plans],
         }, sys.stdout)
         print()
 

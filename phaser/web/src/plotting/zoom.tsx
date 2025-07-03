@@ -4,7 +4,7 @@ import { useAtom } from 'jotai';
 import { Pair, clamp, isClose } from "./scale";
 import { Transform1D, Transform2D } from "./transform";
 
-import { PlotContext, FigureContext, Axis } from "./plot";
+import { PlotContext, FigureContext, Axis, styles } from "./plot";
 
 
 function getScreenCTM(svg: SVGSVGElement): SVGMatrix {
@@ -35,8 +35,8 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     const plot = React.useContext(PlotContext)!;
 
     const child = React.Children.only(children) as React.ReactElement;
-    const childRef: React.MutableRefObject<(HTMLElement & SVGSVGElement) | null> = React.useRef(null);
-    const managerRef: React.MutableRefObject<ZoomManager | null> = React.useRef(null);
+    const childRef = React.useRef<(HTMLElement & SVGSVGElement) | null>(null);
+    const managerRef = React.useRef<ZoomManager | null>(null);
 
     let xaxis: Axis, yaxis: Axis;
     let xtrans: Transform1D, ytrans: Transform1D;
@@ -175,7 +175,7 @@ class ZoomManager {
         }
 
         if (this.elem) {
-            const elems = this.elem.getElementsByClassName('zoom');
+            const elems = this.elem.getElementsByClassName(styles['zoom']);
             for (let i = 0; i < elems.length; i++) {
                 (elems[i] as SVGElement).setAttribute("transform", this.transform.toString());
             }

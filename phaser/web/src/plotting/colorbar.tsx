@@ -1,6 +1,5 @@
 import React from "react";
 import { useAtomValue } from 'jotai';
-import * as d3_color from 'd3-color';
 
 import { np } from "../wasm-array";
 import { FigureContext, Axis, Plot, PlotImage } from "./plot"

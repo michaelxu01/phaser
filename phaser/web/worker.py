@@ -1,6 +1,7 @@
 import dataclasses
 import logging
 import signal
+import socket
 import sys
 import traceback
 import time
@@ -13,6 +14,7 @@ import pane
 
 from phaser.execute import execute_plan, Observer, ReconsPlan
 from phaser.state import ReconsState, PartialReconsState
+from phaser.utils.num import detect_supported_backends
 
 from .types import (
     ConnectMessage, PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
@@ -85,6 +87,10 @@ class WorkerObserver(Observer):
 
 
 def run_worker(url: str, quiet: bool = False):
+    connect_message = ConnectMessage(
+        hostname=socket.gethostname(), backends=t.cast(t.Dict[str, t.Tuple[str, ...]], detect_supported_backends())
+    )
+
     def send_message(msg: WorkerMessage) -> ServerResponse:
         body = msg.into_data()
         resp: requests.Response = requests.post(url, json=body)
@@ -105,7 +111,7 @@ def run_worker(url: str, quiet: bool = False):
                           max_tries=10, max_time=30,
                           giveup=lambda e: isinstance(e, requests.HTTPError))  # giveup on 404, etc.
     def startup() -> ServerResponse:
-        return send_message(ConnectMessage())
+        return send_message(connect_message)
 
     # poll for a job from the server
     # for timeouts, we will eventualy fail and exit the loop

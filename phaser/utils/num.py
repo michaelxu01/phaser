@@ -68,6 +68,26 @@ def get_backend_module(backend: t.Optional[BackendName] = None):
     return numpy
 
 
+def detect_supported_backends() -> t.Dict[BackendName, t.Tuple[str, ...]]:
+    backends: t.Dict[BackendName, t.Tuple[str, ...]] = {'numpy': ('cpu',)}
+
+    try:
+        import jax.numpy  # type: ignore
+        devices = jax.devices()
+        backends['jax'] = tuple(f"{device.platform}:{device.id}" for device in devices)
+    except ImportError:
+        pass
+
+    try:
+        import cupy  # type: ignore
+        n_devices = cupy.cuda.runtime.getDeviceCount()
+        backends['cupy'] = tuple(f'cuda:{i}' for i in range(n_devices))
+    except ImportError:
+        pass
+
+    return backends
+
+
 def get_default_backend_module():
     if not t.TYPE_CHECKING:
         try:
