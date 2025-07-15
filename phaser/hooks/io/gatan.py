@@ -78,13 +78,10 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
             logger.info(f"Scaling patterns by ADU ({adu:.1f})")
             patterns /= adu
 
-    print(diff_step)
 
     a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
 
     sampling = Sampling(cast_length(patterns.shape[-2:], 2), extent=(a, a))
-
-
 
     mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
     mask[2:-2, 2:-2] = 1.

@@ -12,6 +12,8 @@ from pane.convert import IntoConverterHandlers, from_data
 from typing_extensions import Self
 from rsciio import digitalmicrograph as dm
 
+from numpy import flip 
+
 
 from phaser.utils.physics import Electron
 
@@ -39,6 +41,8 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
         path = _get_dir(f)
         
         file = dm.file_reader(f, lazy=True)
+
+  
 
         metadata = {'file_type':'gatan_file',
              'name':str(f.stem),
@@ -97,22 +101,23 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
         diff_scale = 1
 
         wavelength = Electron(metadata['voltage']).wavelength*1e-10   
-        print(wavelength)
+
 
         if units == '1/nm':
             diff_scale = 1e9
-        # elif units == 'um':
-        #     wavelength_scale = 1
-        # elif units == 'pm':
-        #     wavelength_scale = 1        
+        elif units == '1/um':
+            diff_scale = 1e6
+        elif units == '1/pm':
+            diff_scale = 1e12      
 
         metadata['diff_step'] = diff_calibrations[0]['Scale']*diff_scale*wavelength*1e3 # to mrad
-        
+       
         scan_steps = [real_calibrations[0]['Scale'], real_calibrations[1]['Scale']]
 
         # Need to implement error handling, not sure what dm might record as units
         units = real_calibrations[0]['Units']
         scan_scale = 1
+
 
         if units == 'nm': 
             scan_scale = 1e-9
@@ -121,7 +126,7 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
         elif units == 'pm':
             scan_scale = 1e-12
 
-        print('doing something')
+
 
         metadata['scan_step'] = [scan_scale*scan_step for scan_step in scan_steps]
 
@@ -253,6 +258,10 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
     #     raise ValueError(f"File not divisible by 130x128 (size={a.size}).")
     # a.shape = (-1, 130, 128)
     # #a = a[:, :128, :]
+    
+    a = flip(a,(2,3)) # Flip y and x axes to line up with scan 
+
+    
 
     if a.shape[0]*a.shape[1] != n_x * n_y:
         raise ValueError(f"Got {a.shape[0]*a.shape[1]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
