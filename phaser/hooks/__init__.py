@@ -34,11 +34,21 @@ class LoadEmpadProps(Dataclass):
     kv: t.Optional[float] = None
     adu: t.Optional[float] = None
 
+class LoadGatanProps(Dataclass):
+    path: Path
+
+    diff_step: t.Optional[float] = None
+    kv: t.Optional[float] = None
+    adu: t.Optional[float] = None
+
 
 class RawDataHook(Hook[None, RawData]):
     known = {
         'empad': ('phaser.hooks.io.empad:load_empad', LoadEmpadProps),
+        'gatan': ('phaser.hooks.io.gatan:load_gatan', LoadGatanProps)
     }
+
+
 
 
 class ProbeHookArgs(t.TypedDict):

@@ -8,9 +8,12 @@ import pane
 import pane.io
 from numpy.typing import NDArray
 from pane.annotations import shape
-from pane.convert import IntoConverterHandlers
+from pane.convert import IntoConverterHandlers, from_data
 from typing_extensions import Self
 from rsciio import digitalmicrograph as dm
+
+
+from phaser.utils.physics import Electron
 
 from phaser.types import IsVersion
 
@@ -30,21 +33,107 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
     file_type: t.Literal['gatan_file'] = 'gatan_file'
 
     @classmethod
-    def from_dm_metadata_json(cls, rawmetadata:list, *,
+    def from_dm4(cls, f: pane.io.FileOrPath, *,
                   custom: t.Optional[IntoConverterHandlers] = None) -> Self:
+        
         path = _get_dir(f)
+        
+        file = dm.file_reader(f, lazy=True)
 
-        # self = pane.io.from_json(f, cls, custom=custom)
+        metadata = {'file_type':'gatan_file',
+             'name':str(f.stem),
+             'gatan_filename':str(f.stem),
+             'raw':str(f.suffix.removeprefix('.')),
+             'orig_path':str(f.parent.absolute()),
+             'author': None,
+             'voltage': 0.0,
+             'conv_angle': 0.0,
+             'defocus': 1.0e-10,
+             'camera_length': 0.0,
+             'diff_step': 0.0,
+             'scan_rotation': 0.0,
+             'detector_shape': [0, 0],
+             'scan_shape': [0, 0],
+             'scan_fov': [0, 0],
+             'scan_step': [0, 0],
+             'exposure_time': 0.0,
+             'post_exposure_time': 0.0,
+             'beam_current': 0.0,
+             'adu': 1.0,
+             'scan_correction': None,
+             'diff_transpose': [False, False, False], #diagonal, horizontal, vertical
+             'scan_transpose': [False, False, False], #diagonal, horizontal, vertical
+             'notes': None,
+             'crop': None
+             }
+        
+        gatan_metadata = file[0]['original_metadata']['ImageList']['TagGroup0']['ImageTags'] # first image metadata
+        imagedata_metadata = file[0]['original_metadata']['ImageList']['TagGroup0']['ImageData']
 
+        calibrations = list(imagedata_metadata['Calibrations']['Dimension'].values())
+
+        diff_calibrations = calibrations[0:2]
+        real_calibrations = calibrations[2:4]
+        data_dim = list(imagedata_metadata['Dimensions'].values())
         
-        meta = {'name':'test', 
-                'voltage': acq['Microscope Info']['Voltage'],
-                'conv_angle': None
-                'has_bg':True}
+        cam_acq = gatan_metadata['Acquisition']
+        microscope = gatan_metadata['Microscope Info']
+
+        metadata['diff_transpose'] = [bool(s) for s in cam_acq['Device']['Configuration']['Transpose'].values()]
+
+        SI_info  = gatan_metadata['SI']
+
+        metadata['time'] = SI_info['Acquisition']['Date']
+        metadata['scan_shape'] = [int(s) for s in SI_info['Acquisition']['Spatial Sampling'].values()]
+        metadata['exposure_time'] = SI_info['Acquisition']['Pixel time (s)']
+
+        metadata['camera_length'] =  microscope['STEM Camera Length']
+        metadata['voltage'] = microscope['Voltage']
+
+        # diffraction step
+
+        units = diff_calibrations[0]['Units']
+
+        diff_scale = 1
+
+        wavelength = Electron(metadata['voltage']).wavelength*1e-10   
+        print(wavelength)
+
+        if units == '1/nm':
+            diff_scale = 1e9
+        # elif units == 'um':
+        #     wavelength_scale = 1
+        # elif units == 'pm':
+        #     wavelength_scale = 1        
+
+        metadata['diff_step'] = diff_calibrations[0]['Scale']*diff_scale*wavelength*1e3 # to mrad
         
-        metadata = cls(**meta)
-        
-        return metadata
+        scan_steps = [real_calibrations[0]['Scale'], real_calibrations[1]['Scale']]
+
+        # Need to implement error handling, not sure what dm might record as units
+        units = real_calibrations[0]['Units']
+        scan_scale = 1
+
+        if units == 'nm': 
+            scan_scale = 1e-9
+        elif units == 'um':
+            scan_scale = 1e-6
+        elif units == 'pm':
+            scan_scale = 1e-12
+
+        print('doing something')
+
+        metadata['scan_step'] = [scan_scale*scan_step for scan_step in scan_steps]
+
+
+        metadata['detector_shape'] = [data_dim[1], data_dim[0]]
+        metadata['scan_shape'] = [data_dim[3], data_dim[2]]
+        metadata['scan_fov'] = [metadata['scan_shape'][0]*metadata['scan_step'][0], metadata['scan_shape'][1]*metadata['scan_step'][1]]
+
+        self = from_data(metadata, cls, custom=custom) 
+
+        object.__setattr__(self, 'path', path)
+        return self
 
 
     def __post_init__(self):
@@ -53,28 +142,28 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
     name: str
     """Experiment name"""
 
-    version: t.Annotated[str, IsVersion(exactly="2.0")] = "2.0"
+    version: t.Annotated[str, IsVersion(exactly="1.0")] = "1.0"
     """Gatan Metadata version"""
 
-    # raw_filename: str
-    # """Raw 4DSTEM data filename, relative to metadata location."""
+    gatan_filename: str
+    # """Gatan 4DSTEM data filename, relative to metadata location."""
 
-    orig_path: t.Optional[Path] = None
-    """Original path to experimental folder."""
+    # orig_path: t.Optional[Path] = None
+    # """Original path to experimental folder."""
 
     path: t.Optional[Path] = pane.field(init=False, exclude=True)
     """Current path to experimental folder (based on metadata loading)"""
 
-    author: t.Optional[str] = None
-    """Author of dataset"""
-    time: t.Optional[str] = None
+    # author: t.Optional[str] = None
+    # """Author of dataset"""
+    # time: t.Optional[str] = None
     # """Image acquisition time (RFC 2822 format)"""
     # time_unix: t.Optional[float] = None
     # """Image acquisition time (seconds since Unix epoch)"""
     # bg_unix: t.Optional[float] = None
-    """Background image acquisition time (seconds since Unix epoch)"""
-    has_bg: t.Optional[bool] = None
-    """Whether background image is valid"""
+    # """Background image acquisition time (seconds since Unix epoch)"""
+    # has_bg: t.Optional[bool] = None
+    # """Whether background image is valid"""
 
     voltage: float
     """Accelerating voltage (V)."""
@@ -98,8 +187,8 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
     exposure_time: t.Optional[float] = None
     """Pixel exposure time (s)."""
-    post_exposure_time: t.Optional[float] = None
-    """Pixel post-exposure time (s)."""
+    # post_exposure_time: t.Optional[float] = None
+    # """Pixel post-exposure time (s)."""
     beam_current: t.Optional[float] = None
     """Approx. beam current (A)."""
     adu: t.Optional[float] = None
@@ -126,7 +215,7 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None,
             memmap: bool = False) -> NDArray[numpy.float32]:
     """
-    Load a raw gatan dm4 dataset into memory.
+    Load a gatan dm4 dataset into memory.
 
     The file is loaded so the dimensions are: (scan_y, scan_x, k_y, k_x), with y decreasing downwards.
 
@@ -142,8 +231,8 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
     """
     path = Path(path)
 
+    # dm_file = dm.file_reader(path)
 
-    dm_file = dm.file_reader(path)
     # if scan_shape is None:
     #     match = re.search(r"x(\d+)_y(\d+)", path.name)
     #     if match:
@@ -156,20 +245,20 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
     n_y, n_x = scan_shape
 
     if memmap:
-        a = numpy.memmap(path, dtype=numpy.float32, mode='r')
+        a = dm.file_reader(path, lazy=True)[0]['data']
     else:
-        a = numpy.fromfile(path, dtype=numpy.float32)
+        a = dm.file_reader(path, lazy=False)[0]['data']
 
-    if not a.size % (130*128) == 0:
-        raise ValueError(f"File not divisible by 130x128 (size={a.size}).")
-    a.shape = (-1, 130, 128)
-    #a = a[:, :128, :]
+    # if not a.size % (130*128) == 0:
+    #     raise ValueError(f"File not divisible by 130x128 (size={a.size}).")
+    # a.shape = (-1, 130, 128)
+    # #a = a[:, :128, :]
 
-    if a.shape[0] != n_x * n_y:
-        raise ValueError(f"Got {a.shape[0]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
-    a.shape = (n_y, n_x, *a.shape[1:])
+    if a.shape[0]*a.shape[1] != n_x * n_y:
+        raise ValueError(f"Got {a.shape[0]*a.shape[1]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
+    # a.shape = (n_y, n_x, *a.shape[1:])
     
-    a = a[..., 127::-1, :]  # flip reciprocal y space, crop junk rows
+    # a = a[..., 127::-1, :]  # flip reciprocal y space, crop junk rows
 
     return a
 

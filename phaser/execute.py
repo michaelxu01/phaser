@@ -249,6 +249,7 @@ def initialize_reconstruction(
         obj.data = obj.data.astype(cdtype)
     else:
         logging.info("Initializing object...")
+
         obj = (plan.init.object or pane.from_data('random', ObjectHook))({
             'sampling': obj_sampling, 'slices': plan.slices, 'wavelength': wavelength,
             'dtype': dtype, 'seed': seed, 'xp': xp
