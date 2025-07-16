@@ -62,14 +62,14 @@ export interface DashboardConnected {
 export type DashboardMessage = JobMessage | DashboardConnected;
 
 export interface JobsUpdate {
-    event: JobMessage;
+    event: JobMessage | null;
     state: Array<JobState>;
 
     msg: "jobs_update";
 }
 
 export interface WorkersUpdate {
-    event: WorkerUpdate;
+    event: WorkerUpdate | null;
     state: Array<WorkerState>;
 
     msg: "workers_update";

@@ -6,14 +6,14 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import (
-    get_array_module, get_scipy_module, Float,
-    jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
+    get_array_module, get_scipy_module, Float, unstack,
+    jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype, to_numpy
 )
 from phaser.state import ReconsState
 from phaser.hooks.regularization import (
     ClampObjectAmplitudeProps, LimitProbeSupportProps,
     RegularizeLayersProps, ObjLowPassProps, GaussianProps,
-    CostRegularizerProps, TVRegularizerProps
+    CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps
 )
 
 
@@ -424,6 +424,76 @@ class ProbeRecipTotalVariation:
         cost_scale = 1.0
 
         return (cost * cost_scale * self.cost, state)
+
+
+class UnstructuredGaussian:
+    def __init__(self, args: None, props: UnstructuredGaussianProps):
+        self.weight = props.weight
+        self.sigma = props.sigma
+        self.attr_path = props.attr_path
+
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.floating]:
+        xp = get_array_module(sim.scan)
+        try:
+            self.getattr_nested(sim, self.attr_path)
+        except AttributeError as e:
+            raise AttributeError(f"Can't get path '{self.attr_path}' in reconstruction state") from e
+
+        # precompute Gaussian filter
+        obj_samp = sim.object.sampling
+        ky = xp.fft.fftfreq(obj_samp.shape[0], obj_samp.sampling[0])
+        kx = xp.fft.fftfreq(obj_samp.shape[1], obj_samp.sampling[1])
+        ky, kx = xp.meshgrid(ky, kx, indexing='ij')
+        k2 = ky**2 + kx**2
+        return xp.exp(- (2 * numpy.pi**2 * self.sigma**2) * k2)
+
+    def getattr_nested(self, obj: t.Any, attr_path: str) -> t.Any:
+        for attr in attr_path.split('.'):
+            obj = getattr(obj, attr)
+        return obj
+
+    def setattr_nested(self, obj: t.Any, attr_path: str, value: t.Any):
+        *parents, last = attr_path.split('.')
+        for attr in parents:
+            obj = getattr(obj, attr)
+        setattr(obj, last, value)
+
+    def apply_iter(self, sim: ReconsState, state: NDArray[numpy.floating]) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
+        from scipy.spatial import KDTree
+        obj_samp = sim.object.sampling
+        scan_flat = sim.scan.reshape(-1, 2)
+
+        attr = self.getattr_nested(sim, self.attr_path)
+        vals = t.cast(NDArray[numpy.inexact], getattr(attr, 'data', attr))  # Extract raw array
+        xp = get_array_module(vals)
+
+        is_complex = xp.iscomplexobj(vals)
+
+        if is_complex:
+            vals = xp.stack([vals.real, vals.imag], axis=-1)
+
+        tree = KDTree(to_numpy(scan_flat))
+        obj_pts = numpy.stack(obj_samp.grid(xp=numpy), axis=-1)
+        # val_img should be on GPU
+        val_img = vals.reshape((-1, *vals.shape[2:]))[xp.array(tree.query(obj_pts)[1])]
+
+        # blur in Fourier space
+        # HACK: the transposes are so we FFT over the first two axes
+        val_img_blur = ifft2(fft2(val_img.T) * state.T).real.T
+
+        # then sample back to the scan positions
+        idxs = xp.round((scan_flat - obj_samp.corner) / obj_samp.sampling).astype(numpy.int_)
+        blur_vals = val_img_blur[unstack(idxs, axis=-1)].reshape(vals.shape)
+
+        new_vals = self.weight * blur_vals + (1 - self.weight) * vals
+
+        if is_complex:
+            new_vals = new_vals[..., 0] + new_vals[..., 1] * 1.j
+
+        # TODO: this should be expressed as immutable
+        self.setattr_nested(sim, self.attr_path, new_vals)
+
+        return (sim, state)
 
 
 def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:

@@ -117,7 +117,7 @@ def resample_slices(
         raise ValueError(f"Unknown alignment type '{align}'. Expected 'top', 'middle', or 'bottom'.")
 
     # log to make linear, normalize from projected potential to potential
-    obj = (xp.log(obj) / old_thicknesses).astype(obj.dtype)
+    obj = (xp.log(obj) / old_thicknesses[:, None, None]).astype(obj.dtype)
 
     if pad_mode == 'edge':
         before_slice = obj[0]
@@ -135,8 +135,8 @@ def resample_slices(
 
     new_obj = _interp1d(obj, old_zs, new_zs)
 
-    # convert back to projected potential, undo log
-    new_obj *= new_thicknesses
+    # convert back to projected potential
+    new_obj *= new_thicknesses[:, None, None]
 
     def _calc_projected(o) -> numpy.floating:
         # TODO the object probably needs to be unwrapped before this
@@ -151,8 +151,9 @@ def resample_slices(
         warnings.warn("The `rescale_projected` feature is experimental. Use at your own risk.")
         # TODO: we may not be able to trust the raw potentials w/out phase ramp removal here
         scale = _calc_projected(obj) / _calc_projected(new_obj)
-        new_obj *= scale
+        new_obj *= xp.array(scale)[:, None, None]
 
+    # undo log
     return xp.exp(new_obj.astype(obj.dtype))
 
 

@@ -58,7 +58,11 @@ def get_cutouts(obj: jax.Array, start_idxs: jax.Array, cutout_shape: t.Tuple[int
 
 @partial(jax.jit, static_argnums=0)
 def outer(ufunc: t.Any, x: jax.Array, y: jax.Array) -> jax.Array:
-    return jax.vmap(jax.vmap(ufunc, (None, 0)), (0, None))(x, y)
+    if x.ndim == 0 or y.ndim == 0:
+        return ufunc(x, y)
+
+    out_shape = (*x.shape, *y.shape)
+    return jax.vmap(jax.vmap(ufunc, (None, 0)), (0, None))(x.ravel(), y.ravel()).reshape(out_shape)
 
 
 @partial(jax.jit, static_argnames=('output_shape', 'order', 'mode', 'cval'))

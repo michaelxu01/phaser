@@ -12,6 +12,7 @@ SaveType: t.TypeAlias = t.Literal[
     'probe', 'probe_mag', 'probe_recip', 'probe_recip_mag',
     'object_phase_stack', 'object_phase_sum',
     'object_mag_stack', 'object_mag_sum',
+    'scan', 'tilt',
 ]
 
 
@@ -27,11 +28,15 @@ class InitPlan(Dataclass, kw_only=True):
 class SaveOptions(Dataclass, kw_only=True):
     images: t.Tuple[SaveType, ...] = ('probe', 'object_phase_stack')
     crop_roi: bool = True
-    unwrap_phase: bool = True
+    unwrap_phase: bool = False
     img_dtype: t.Literal['float', '8bit', '16bit', '32bit'] = '16bit'
 
+    plot_ext: str = "svg"
+    """Extension to use for matplotlib savefig"""
+    plot_dpi: int = 300
+
     out_dir: str = "{name}"
-    img_fmt: str = "{type}_iter{iter.total_iter}.tiff"
+    img_fmt: str = "{type}_iter{iter.total_iter}.{ext}"
     hdf5_fmt: str = "iter{iter.total_iter}.h5"
 
 

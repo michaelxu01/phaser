@@ -17,9 +17,10 @@ def output_images(state: ReconsState, out_dir: Path, options: SaveOptions):
         if ty not in _SAVE_FUNCS:
             raise ValueError(f"Unknown image type '{ty}'")
 
+        ext = options.plot_ext if ty in _PLOT_FUNCS else 'tiff'
         try:
             out_name = options.img_fmt.format(
-                type=ty, iter=state.iter,
+                type=ty, iter=state.iter, ext=ext
             )
             out_path = out_dir / out_name
         except KeyError as e:
@@ -175,6 +176,60 @@ def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, s
         w.write(obj_mag, **write_opts)
 
 
+def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
+    from matplotlib import pyplot
+    fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
+
+    ax.set_aspect(1.)
+    [l, r, b, t] = state.object.sampling.mpl_extent()
+    ax.set_xlim(l, r)
+    ax.set_ylim(b, t)
+
+    scan = to_numpy(state.scan)
+    i = numpy.arange(scan[..., 0].size)
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, s=0.2, cmap='plasma')
+
+    fig.savefig(out_path)
+    pyplot.close(fig)
+
+
+def _plot_tilt(state: ReconsState, out_path: Path, options: SaveOptions):
+    from matplotlib import pyplot
+
+    fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
+
+    ax.set_aspect(1.)
+    [l, r, b, t] = state.object.sampling.mpl_extent()
+    ax.set_xlim(l, r)
+    ax.set_ylim(b, t)
+
+    scan = to_numpy(state.scan)
+    tilt = to_numpy(state.tilt)
+    tilt = tilt[..., 1] + tilt[..., 0]*1.j
+    max_tilt = max(numpy.max(numpy.abs(tilt)), 1.0)  # at least 1 mrad
+    c = colorize_complex(tilt / max_tilt, amp=True, rescale=False)
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c.ravel(), s=0.2)
+
+    fig.draw_without_rendering()
+    trans = ax.transAxes + fig.transFigure.inverted()
+    legend_ax_max = trans.transform([0.95, 0.02])
+    legend_ax_size = (0.1, 0.1)
+    legend_ax = fig.add_axes((legend_ax_max[0] - legend_ax_size[0], legend_ax_max[1], *legend_ax_size), projection='polar')
+
+    legend_ax.set_rmax(max_tilt)  # type: ignore
+    legend_ax.set_theta_direction(-1)  # type: ignore
+    legend_ax.set_axis_off()
+
+    thetas = numpy.linspace(0., 2*numpy.pi, 70)
+    rs = numpy.concatenate([[0.0], numpy.geomspace(0.1, 1.0, 30)])
+    rr, tt = numpy.meshgrid(rs, thetas, indexing='ij')
+    c2 = colorize_complex(rr * numpy.exp(1.j * tt), rescale=False)
+    legend_ax.pcolormesh(tt, rr * max_tilt, c2)
+    legend_ax.text(-numpy.pi/2., max_tilt * 1.05, f"{max_tilt:.1f} mrad", ha='center', va='bottom', size='small')
+
+    fig.savefig(out_path)
+    pyplot.close(fig)
+
 
 _SAVE_FUNCS: t.Dict[str, t.Callable[[ReconsState, Path, SaveOptions], t.Any]] = {
     'probe': _save_probe,
@@ -185,4 +240,8 @@ _SAVE_FUNCS: t.Dict[str, t.Callable[[ReconsState, Path, SaveOptions], t.Any]] = 
     'object_phase_sum': partial(_save_object_phase, stack=False),
     'object_mag_stack': partial(_save_object_mag, stack=True),
     'object_mag_sum': partial(_save_object_mag, stack=False),
+    'scan': _plot_scan,
+    'tilt': _plot_tilt,
 }
+# save functions with special handling of file extensions
+_PLOT_FUNCS: t.Set[str] = {'scan', 'tilt'}

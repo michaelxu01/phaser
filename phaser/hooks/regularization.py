@@ -4,6 +4,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.types import Dataclass
+from dataclasses import field
 from phaser.utils.num import Float
 from . import Hook
 
@@ -40,8 +41,23 @@ class LimitProbeSupportProps(Dataclass):
 
 
 class RegularizeLayersProps(Dataclass):
-    weight: float = 0.9  # weight of regularization to apply
     sigma: float = 50.0  # standard deviation of gaussian filter (angstrom)
+    weight: float = 0.9  # weight of regularization to apply
+
+
+class UnstructuredGaussianProps(Dataclass):
+    attr_path: str
+    sigma: float
+
+    weight: float = 0.9  # weight of regularization to apply
+
+
+class TiltGaussianProps(UnstructuredGaussianProps):
+    attr_path: t.Literal['tilt'] = 'tilt'
+
+
+class OPRGaussianProps(UnstructuredGaussianProps):
+    attr_path: t.Literal['opr.data'] = 'opr.data'
 
 
 class ObjLowPassProps(Dataclass):
@@ -60,6 +76,8 @@ class IterConstraintHook(Hook[None, IterConstraint]):
         'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),
         'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
         'obj_gaussian': ('phaser.engines.common.regularizers:ObjGaussian', GaussianProps),
+        'opr_gaussian': ('phaser.engines.common.regularizers:UnstructuredGaussian', OPRGaussianProps),
+        'tilt_gaussian': ('phaser.engines.common.regularizers:UnstructuredGaussian', TiltGaussianProps),
         'remove_phase_ramp': ('phaser.engines.common.regularizers:RemovePhaseRamp', t.Dict[str, t.Any]),
     }
 

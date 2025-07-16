@@ -54,23 +54,21 @@ def remove_linear_ramp(
     return output
 
 
-def colorize_complex(vals: ArrayLike, magnitude_only=False) -> NDArray[numpy.floating]:
+def colorize_complex(vals: ArrayLike, amp: bool = False, rescale: bool = True) -> NDArray[numpy.floating]:
     """Colorize a ndarray of complex values as rgb."""
     from matplotlib.colors import hsv_to_rgb
     xp = get_array_module(vals)
 
     vals = xp.asarray(vals, dtype=numpy.complexfloating)
-    mag = abs2(vals)
-    arg = xp.angle(vals) 
-    max_mag = xp.max(mag)
 
-    if magnitude_only:
-        return mag
+    v = xp.abs(vals) if amp else abs2(vals)
+    if rescale:
+        v /= xp.max(v)
+    arg = xp.angle(vals) 
 
     h = (arg + numpy.pi) / (2*numpy.pi)
-    s = 0.85 * xp.ones_like(mag)
-    v = mag / max_mag 
-    return hsv_to_rgb(to_numpy(xp.stack((h, s, v), axis=-1)))
+    s = 0.85 * xp.ones_like(v)
+    return xp.clip(hsv_to_rgb(to_numpy(xp.stack((h, s, v), axis=-1))), 0.0, 1.0)
 
 
 def scale_to_integral_type(
