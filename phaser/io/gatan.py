@@ -13,6 +13,7 @@ from typing_extensions import Self
 from rsciio import digitalmicrograph as dm
 
 from numpy import flip 
+import numpy as np
 
 
 from phaser.utils.physics import Electron
@@ -100,7 +101,7 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
         diff_scale = 1
 
-        wavelength = Electron(metadata['voltage']).wavelength*1e-10   
+        wavelength = float(Electron(metadata['voltage']).wavelength*1e-10)   
 
 
         if units == '1/nm':
@@ -120,11 +121,11 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
 
         if units == 'nm': 
-            scan_scale = 1e-9
+            scan_scale = float(1e-9)
         elif units == 'um':
             scan_scale = 1e-6
         elif units == 'pm':
-            scan_scale = 1e-12
+            scan_scale = float(1e-12)
 
 
 
@@ -236,16 +237,6 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
     """
     path = Path(path)
 
-    # dm_file = dm.file_reader(path)
-
-    # if scan_shape is None:
-    #     match = re.search(r"x(\d+)_y(\d+)", path.name)
-    #     if match:
-    #         n_x, n_y = map(int, (match[1], match[2]))
-    #     else:
-    #         raise ValueError(f"Unable to infer probe dimensions from name {path.name}")
-    # else:
-    
     
     n_y, n_x = scan_shape
 
@@ -253,23 +244,13 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
         a = dm.file_reader(path, lazy=True)[0]['data']
     else:
         a = dm.file_reader(path, lazy=False)[0]['data']
-
-    # if not a.size % (130*128) == 0:
-    #     raise ValueError(f"File not divisible by 130x128 (size={a.size}).")
-    # a.shape = (-1, 130, 128)
-    # #a = a[:, :128, :]
     
     a = flip(a,(2,3)) # Flip y and x axes to line up with scan 
 
-    
-
     if a.shape[0]*a.shape[1] != n_x * n_y:
         raise ValueError(f"Got {a.shape[0]*a.shape[1]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
-    # a.shape = (n_y, n_x, *a.shape[1:])
     
-    # a = a[..., 127::-1, :]  # flip reciprocal y space, crop junk rows
-
-    return a
+    return a.astype(numpy.float32)
 
 
 @t.overload

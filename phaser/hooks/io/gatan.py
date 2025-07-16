@@ -34,6 +34,8 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
     voltage = props.kv * 1e3 if props.kv is not None else metadata.voltage
     diff_step = props.diff_step or metadata.diff_step
     scan_shape = metadata.scan_shape
+
+    print(f"Scan shape: {scan_shape}, Step size: {metadata.scan_step}")
     adu = 1 #props.adu or meta.adu
     needs_scale = not metadata.is_simulated()
 
@@ -69,7 +71,7 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
     if not path.exists():
         raise ValueError(f"Couldn't find gatan data at path {path}")
 
-    patterns = numpy.fft.ifftshift(load_4d(path, scan_shape, memmap=True), axes=(-1, -2))
+    patterns = numpy.fft.ifftshift(load_4d(path, scan_shape, memmap=False), axes=(-1, -2)).astype(numpy.float32)
 
     if needs_scale:
         if adu is None:
@@ -79,16 +81,17 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
             patterns /= adu
 
 
-    a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
+    a = float(wavelength / (diff_step * 1e-3)) # recip. pixel size -> 1 / real space extent
 
     sampling = Sampling(cast_length(patterns.shape[-2:], 2), extent=(a, a))
 
-    mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
+    mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:]).astype(numpy.float32)
+
     mask[2:-2, 2:-2] = 1.
 
     return {
         'patterns': patterns,
-        'mask': numpy.fft.ifftshift(mask, axes=(-1, -2)),
+        'mask': numpy.fft.ifftshift(mask, axes=(-1, -2)).astype(numpy.float32),
         'sampling': sampling,
         'wavelength': wavelength,
         'probe_hook': probe_hook,
