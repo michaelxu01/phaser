@@ -59,7 +59,7 @@ jax = [
     "optax>=0.2.2",
 ]
 web = [
-    "Quart>=0.19.5",
+    "Quart>=0.20.0",
     "backoff==2.2.1",
     "requests>=2.31.0",
 ]
