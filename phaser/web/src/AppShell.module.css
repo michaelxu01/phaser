@@ -1,0 +1,14 @@
+
+.root {
+    :where([data-with-border]) {
+        border-bottom: 2px solid var(--app-shell-border-color);
+    }
+
+    @mixin light {
+        --app-shell-border-color: var(--mantine-color-gray-6);
+    }
+
+    @mixin dark {
+        --app-shell-border-color: var(--mantine-color-gray-3);
+    }
+}

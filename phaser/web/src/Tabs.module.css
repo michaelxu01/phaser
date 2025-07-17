@@ -1,0 +1,45 @@
+.root {
+    &[data-variant="pills"] {
+        .panel {
+            border: var(--tabs-border-width) solid var(--tab-border-color);
+            border-radius: var(--tabs-radius);
+        }
+
+        .tab {
+            border-radius: var(--tabs-radius) var(--tabs-radius) 0 0;
+            margin: 0 1em;
+            padding-bottom: calc(var(--mantine-spacing-xs) + var(--tab-highlight-width));
+
+            &[data-active] {
+                border-bottom: var(--tab-highlight-width) solid var(--tab-highlight-color);
+                padding-bottom: var(--mantine-spacing-xs);
+            }
+
+            &:not([data-active]) {
+                @mixin hover {
+                    border-bottom: var(--tabs-border-width) solid var(--tab-border-color);
+                    padding-bottom: calc(var(--mantine-spacing-xs) + var(--tab-highlight-width) - var(--tabs-border-width));
+                }
+            }
+        }
+
+        .list {
+            position: relative;
+            top: var(--tabs-border-width);
+        }
+    }
+
+    --tabs-border-width: 2px;
+    --tab-highlight-width: 4px;
+    --tab-highlight-color: black;
+
+    @mixin light {
+        --tab-border-color: var(--mantine-color-gray-6);
+    }
+
+    @mixin dark {
+        --tab-border-color: var(--mantine-color-gray-3);
+        --tab-highlight-color: var(--mantine-color-white);
+    }
+}
+

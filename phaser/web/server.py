@@ -88,7 +88,9 @@ class Worker(Subscribable[WorkerUpdate], abc.ABC):
         )
 
     async def cancel(self):
-        if self.status not in ('stopping', 'stopped'):
+        if self.status == 'queued':
+            await self.set_status('stopped')
+        elif self.status not in ('stopping', 'stopped'):
             await self.set_status('stopping')
 
     async def reload(self):
@@ -193,8 +195,8 @@ class LocalWorker(Worker):
 
 class ManualWorker(Worker):
     def __init__(self, worker_id: WorkerID):
-        url = server.get_worker_url(worker_id)
-        logging.warning(f"Worker command: python -m phaser worker {url}")
+        self.url = server.get_worker_url(worker_id)
+        logging.warning(f"Worker command: python -m phaser worker {self.url}")
         super().__init__(worker_id)
 
     def worker_type(self) -> str:

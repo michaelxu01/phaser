@@ -4,13 +4,14 @@ import { createRoot } from 'react-dom/client';
 import { atom, PrimitiveAtom, useAtomValue, Provider, useStore } from 'jotai';
 
 import '@mantine/core/styles.css';
-import { AppShell, createTheme, MantineProvider, Container, Group, Button, useMantineColorScheme, Collapse, Title, LoadingOverlay, Box, Modal } from '@mantine/core';
+import { AppShell, MantineProvider, Container, Group, Button, Collapse, Title, LoadingOverlay, Box, Modal, Tabs, Stack, Code } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import ky from 'ky';
 import TimeAgo from 'react-timeago';
 
 import '../static/styles.css';
 import { JobState, WorkerState, ManagerMessage } from './types';
+import { makeTheme, cssVariableResolver } from './theme';
 import { Section } from './components';
 import Header from './header';
 import websocket from './websocket';
@@ -83,8 +84,6 @@ export function Job({i, state}: {i: number, state: JobState}) {
     const engine_progress = iter_state ? `${iter_state.engine_iter}/${iter_state.n_engine_iters ?? '?'}` : "";
     const total_progress = iter_state ? `${iter_state.total_iter}/${iter_state.n_total_iters ?? '?'}` : "";
 
-    console.log(`engine_progress: ${engine_progress}`);
-
     return <>
         <div className="card" style={{gridRow: 2*i + 2}} onClick={toggle}>
             <div style={{gridColumn: 1}}>{state.job_id}</div>
@@ -94,7 +93,7 @@ export function Job({i, state}: {i: number, state: JobState}) {
             <div style={{gridColumn: 5}}>{total_progress}</div>
             <Group style={{gridColumn: -1}} justify='center'>
                 <Button color="yellow" component='a' href={state.links.dashboard}>Watch</Button>
-                <Button color="red" onClick={(e) => cancel_job(state, e)}>Shutdown</Button>
+                <Button color="red" onClick={(e) => cancel_job(state, e)}>Cancel</Button>
             </Group>
         </div>
         <Collapse className="card-body" style={{gridRow: 2*i + 3}} in={opened}>
@@ -130,7 +129,7 @@ export function Jobs({jobs}: {jobs: PrimitiveAtom<Array<JobState>>}) {
 
 export function StartWorkers(props: {}) {
     const [submitting, { open: setSubmitting, close: finishSubmitting }] = useDisclosure(false);
-    const [error, setError] = React.useState<string | null>(null);
+    const [message, setMessage] = React.useState<[string, string] | null>(null);
 
     function start_worker(worker_type: string): (e: React.MouseEvent) => void {
         return async function(e: React.MouseEvent) {
@@ -141,17 +140,48 @@ export function StartWorkers(props: {}) {
                 timeout: 5000,
             }));
             if (result.type == 'error') {
-                setError(result.msg)
+                setMessage(["Error submitting worker", result.msg]);
+            } else if (result.body.message) {
+                setMessage(["Allocated worker", result.body.message]);
             }
             finishSubmitting();
         }
     }
 
-    return <Box pos="relative">
-        <Modal opened={!!error} onClose={() => setError(null)} title="Error submitting worker">{error}</Modal>
+    const panelStyle = {
+        padding: "10px",
+        minHeight: "100px",
+    };
+
+    return <Box pos="relative" style={{maxWidth: "600px"}}>
+        <Modal opened={message !== null} onClose={() => setMessage(null)} title={message ? message[0] : ""}>{message ? message[1] : ""}</Modal>
         <LoadingOverlay visible={submitting} zIndex={1000}/>
-        <button onClick={start_worker("local")}>Start local worker</button>
-        <button onClick={start_worker("slurm")}>Start slurm worker</button>
+        <Tabs variant="pills" defaultValue="local">
+            <Tabs.List>
+                <Tabs.Tab value="local">Local</Tabs.Tab>
+                <Tabs.Tab value="slurm">Slurm</Tabs.Tab>
+                <Tabs.Tab value="manual">Manual</Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="local" style={panelStyle}>
+                <Stack>
+                    <div>Starts a worker on the local computer</div>
+                    <div><button onClick={start_worker("local")}>Start</button></div>
+                </Stack>
+            </Tabs.Panel>
+            <Tabs.Panel value="slurm" style={panelStyle}>
+                <Stack>
+                    <div>Starts a remote worker using Slurm (more configuration to come!)</div>
+                    <div><button onClick={start_worker("slurm")}>Start</button></div>
+                </Stack>
+            </Tabs.Panel>
+            <Tabs.Panel value="manual" style={panelStyle}>
+                <Stack>
+                    <div>Create a worker which must be started manually</div>
+                    <div>Start with <Code>phaser worker &lt;url&gt;</Code></div>
+                    <div><button onClick={start_worker("manual")}>Start</button></div>
+                </Stack>
+            </Tabs.Panel>
+        </Tabs>
     </Box>
 }
 
@@ -261,14 +291,10 @@ function cancel_job(job: JobState, e: React.MouseEvent) {
 };
 
 
-const theme = createTheme({
-
-});
-
 const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
-        <MantineProvider theme={theme}>
+        <MantineProvider theme={makeTheme()} cssVariablesResolver={cssVariableResolver}>
             <App/>
         </MantineProvider>
     </StrictMode>

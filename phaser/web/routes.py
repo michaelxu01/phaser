@@ -57,7 +57,6 @@ async def start_worker(worker_type: str):
     elif worker_type == 'local':
         worker = LocalWorker(worker_id, server.get_worker_url(worker_id))
     elif worker_type == 'slurm':
-        await asyncio.sleep(10)
         if sys.platform not in ('linux', 'darwin'):
             abort(Response(f"Slurm not supported on platform '{sys.platform}'", 400))
         try:
@@ -69,7 +68,11 @@ async def start_worker(worker_type: str):
         worker = await server.slurm_manager.make_worker(worker_id, url)
 
     await server.workers.add(worker)
-    return json_response(worker.state())
+
+    state = t.cast(t.Dict[str, t.Any], pane.into_data(worker.state()))
+    if isinstance(worker, ManualWorker):
+        state['message'] = f"Start worker using URL: {worker.url}"
+    return json_response(state)
 
 @app.post("/job/start")
 async def start_job():

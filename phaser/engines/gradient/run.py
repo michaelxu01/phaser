@@ -10,7 +10,7 @@ from phaser.hooks.solver import NoiseModel
 from phaser.utils.misc import jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
+    fft2, ifft2, abs2, check_finite, at, Float, to_real_dtype
 )
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.io import OutputDir
@@ -400,7 +400,7 @@ def run_model(
     delta_zs = sim.object.thicknesses[:-1]
     xp = get_array_module(sim.probe.data)
     dtype = to_real_dtype(sim.probe.data.dtype)
-    complex_dtype = to_complex_dtype(dtype)
+    #complex_dtype = to_complex_dtype(dtype)
 
     probes = sim.probe.data
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, group_scan, probes.shape[-2:])

@@ -31,6 +31,7 @@ module.exports = {
                   auto: /\.module\.css$/i,
                   localIdentName: '[name]__[local]',
                 },
+                //sourceMap: false,
               }
             },
             "postcss-loader",
