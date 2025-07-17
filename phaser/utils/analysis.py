@@ -159,7 +159,7 @@ def _cross_correlate(x: NDArray[numpy.floating], y: NDArray[numpy.floating], max
 def align_object_to_ground_truth(
     object: ObjectState,
     ground_truth: NDArray[numpy.floating],
-    ground_truth_sampling: ArrayLike,
+    ground_truth_sampling: ArrayLike, *,
     rotation_angle: float = 0.0,
     refinement_niter: int = 0,
     order: int = 1,
@@ -171,18 +171,18 @@ def align_object_to_ground_truth(
 def align_object_to_ground_truth(
     object: ObjectState,
     ground_truth: NDArray[numpy.floating],
-    ground_truth_sampling: ArrayLike,
+    ground_truth_sampling: ArrayLike, *,
     rotation_angle: float = 0.0,
     refinement_niter: int = 0,
     order: int = 1,
-    return_crop: t.Literal[True] = True,
+    return_crop: t.Literal[True],
 ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], t.Tuple[slice, slice]]:
     ...
 
 def align_object_to_ground_truth(
     object: ObjectState,
     ground_truth: NDArray[numpy.floating],
-    ground_truth_sampling: ArrayLike,
+    ground_truth_sampling: ArrayLike, *,
     rotation_angle: float = 0.0,
     refinement_niter: int = 0,
     order: int = 1,

@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 import logging
 import time
 import typing as t
@@ -133,8 +134,6 @@ def load_raw_data(
 
     if raw_data['scan_hook'] is None and init_state.scan is None:
         raise ValueError("`scan` must be specified by raw data, previous state, or manually in `init.scan`")
-    if raw_data['tilt_hook'] is None and init_state.tilt is None:
-        raw_data['tilt_hook'] = {'type': 'global', 'tilt': [0., 0.]}
     if raw_data['probe_hook'] is None and init_state.probe is None:
         raise ValueError("`probe` must be specified by raw data, previous state, or manually in `init.probe`")
     if raw_data['scan_hook'] == {}:
@@ -232,12 +231,14 @@ def initialize_reconstruction(
     if init_state.tilt is not None and plan.init.tilt is None:
         logging.info("Re-using tilt from initial state...")
         tilt = init_state.tilt
-    else:
+    elif tilt_hook is not None:
         logging.info("Initializing tilt...")
         tilt = pane.from_data(tilt_hook, TiltHook)(  # type: ignore
             {'dtype': dtype, 'xp': xp, 'shape': scan.shape[:-1]}
         )
-    
+    else:
+        tilt = None
+
     obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
     obj_sampling = ObjectSampling.from_scan(
         scan, sampling.sampling, sampling.extent / 2. + obj_pad_px * sampling.sampling
@@ -358,6 +359,12 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         logging.info(f"Reslicing object from {max(1, len(state.object.thicknesses))} to {max(1, len(engine.slices.thicknesses))} slice(s)...")
         state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)
         state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
+
+    if isinstance(engine, GradientEnginePlan):
+        solver_vars = set(itertools.chain.from_iterable(engine.solvers.keys()))
+        if 'tilt' in solver_vars and state.tilt is None:
+            logging.info("Creating new, zeroed tilt map...")
+            state.tilt = xp.zeros_like(state.scan)
 
     return patterns, state
 

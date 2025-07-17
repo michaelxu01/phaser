@@ -1,4 +1,5 @@
 from functools import partial
+import logging
 from pathlib import Path
 import typing as t
 
@@ -181,9 +182,9 @@ def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
     fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
 
     ax.set_aspect(1.)
-    [l, r, b, t] = state.object.sampling.mpl_extent()
-    ax.set_xlim(l, r)
-    ax.set_ylim(b, t)
+    [left, right, bottom, top] = state.object.sampling.mpl_extent()
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
 
     scan = to_numpy(state.scan)
     i = numpy.arange(scan[..., 0].size)
@@ -196,12 +197,17 @@ def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
 def _plot_tilt(state: ReconsState, out_path: Path, options: SaveOptions):
     from matplotlib import pyplot
 
+    if state.tilt is None:
+        logger = logging.getLogger(__name__)
+        logger.warning("Tilt map (`state.tilt`) is missing, skipping `plot_tilt`")
+        return
+
     fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
 
     ax.set_aspect(1.)
-    [l, r, b, t] = state.object.sampling.mpl_extent()
-    ax.set_xlim(l, r)
-    ax.set_ylim(b, t)
+    [left, right, bottom, top] = state.object.sampling.mpl_extent()
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
 
     scan = to_numpy(state.scan)
     tilt = to_numpy(state.tilt)
