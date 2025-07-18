@@ -470,7 +470,7 @@ class ObjectSampling:
         sampling = numpy.broadcast_to(sampling, (2,))
         new_shape = numpy.ceil(self.sampling / sampling * self.shape).astype(int)
         growth = sampling * new_shape - self.sampling * self.shape
-        assert numpy.all(growth >= 0.)
+        assert numpy.all(growth / self.sampling >= -1e-4)  # make sure we grow
         return self.__class__(
             shape=tuple(new_shape),
             sampling=sampling,
