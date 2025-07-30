@@ -71,6 +71,15 @@ class EnginePlan(Dataclass, kw_only=True):
     save_images: FlagLike = False
     save_options: SaveOptions = SaveOptions()
 
+    early_termination: t.Optional[int] = None
+    """Terminate after n iterations without improvement"""
+    early_termination_smoothing: float = 0.9
+    """
+    Smoothing factor to apply to error measurement for early termination.
+    NOTE: Low smoothing factor means a large amount of smoothing!
+    (smooths over ~1/smoothing iterations)
+    """
+
     send_every_group: bool = False
 
 

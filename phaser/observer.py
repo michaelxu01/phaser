@@ -139,12 +139,12 @@ class LoggingObserver(Observer):
 
 
 class PatienceObserver(Observer):
-    def __init__(self, patience: int, smoothing_factor: float = 0.1, continue_next_engine: bool = True):
+    def __init__(self, patience: int, smoothing: float = 0.1, continue_next_engine: bool = True):
         self.patience: int = patience
         self.no_improvement_iter: int = 0
         self.best_error: t.Optional[float] = None
         self.smoothed_error: t.Optional[float] = None
-        self.smoothing_factor: float = smoothing_factor
+        self.smoothing: float = smoothing
         self.continue_next_engine: bool = continue_next_engine
 
     def init_engine(
@@ -172,7 +172,7 @@ class PatienceObserver(Observer):
         if self.smoothed_error is None:
             self.smoothed_error = error
         else:
-            self.smoothed_error = (1 - self.smoothing_factor) * self.smoothed_error + self.smoothing_factor * error
+            self.smoothed_error = (1 - self.smoothing) * self.smoothed_error + self.smoothing * error
 
         if self.no_improvement_iter >= self.patience:
             logging.info(f"Early termination: no improvement for {self.patience} iterations")

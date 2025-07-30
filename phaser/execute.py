@@ -13,7 +13,7 @@ from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
 from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState, PreparedRecons
-from .observer import Observer, LoggingObserver, SaveObserver, ObserverSet
+from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
 
 
 def execute_plan(
@@ -55,6 +55,13 @@ def execute_engine(
 
     engine_i = recons.state.iter.engine_num
 
+    if plan.early_termination:
+        engine_observer = ObserverSet((recons.observer, PatienceObserver(
+            plan.early_termination, plan.early_termination_smoothing
+        )))
+    else:
+        engine_observer = recons.observer
+
     logging.info(f"Preparing for engine #{engine_i + 1}...")
     recons.patterns, recons.state = prepare_for_engine(recons.patterns, recons.state, xp, plan)
     recons.state.iter = IterState(
@@ -71,14 +78,14 @@ def execute_engine(
             'dtype': dtype,
             'xp': xp,
             'recons_name': recons.name,
-            'observer': recons.observer,
+            'observer': engine_observer,
             'seed': None,
         })
     except EarlyTermination as e:
-        recons.observer.finish_engine()
+        engine_observer.finish_engine()
 
         if not e.continue_next_engine:
-            recons.observer.finish_recons()
+            engine_observer.finish_recons()
             raise
 
     return recons
