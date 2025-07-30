@@ -81,8 +81,9 @@ ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotat
 EmptyDict: t.TypeAlias = t.Annotated[t.Dict[t.NoReturn, t.NoReturn], _EmptyDictAnnotation()]
 
 
-class Cancelled(BaseException):
-    ...
+class EarlyTermination(BaseException):
+    def __init__(self, continue_next_engine: bool = False):
+        self.continue_next_engine = continue_next_engine
 
 
 class Dataclass(pane.PaneBase, kw_only=True, allow_extra=False):

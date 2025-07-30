@@ -11,6 +11,7 @@ from phaser.utils.object import ObjectSampling
 if t.TYPE_CHECKING:
     from phaser.utils.io import HdfLike
     from phaser.utils.image import _BoundaryMode
+    from phaser.observer import ObserverSet
 
 
 @jax_dataclass
@@ -259,4 +260,9 @@ class PartialReconsState:
         return hdf5_read_state(file)
 
 
-StateObserver: t.TypeAlias = t.Callable[[t.Union[ReconsState, PartialReconsState]], t.Any]
+@jax_dataclass(static_fields=('name', 'observer'))
+class PreparedRecons:
+    patterns: Patterns
+    state: ReconsState
+    name: str
+    observer: 'ObserverSet'

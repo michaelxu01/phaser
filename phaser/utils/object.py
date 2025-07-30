@@ -553,7 +553,7 @@ class ObjectCutout(t.Generic[DTypeT]):
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] += view[idx]
+            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] += view[idx]  # type: ignore
         return self
 
     def _with_obj(self, obj: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:

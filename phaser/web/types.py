@@ -6,7 +6,6 @@ import pane
 from pane.annotations import Tagged
 from typing_extensions import Self
 
-from phaser.types import Cancelled
 from .util import ReconsStateConverter
 
 
@@ -52,7 +51,7 @@ class ValidationError(Exception):
     def __init__(self, msg: str):
         self.msg: str = msg
 
-class SignalException(Cancelled):
+class SignalException(Exception):
     def __init__(self, signal: Signal, urgent: bool = False):
         self.signal: Signal = signal
         self.urgent: bool = urgent

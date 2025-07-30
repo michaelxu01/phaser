@@ -36,8 +36,8 @@ class SaveOptions(Dataclass, kw_only=True):
     plot_dpi: int = 300
 
     out_dir: str = "{name}"
-    img_fmt: str = "{type}_iter{iter.total_iter}.{ext}"
-    hdf5_fmt: str = "iter{iter.total_iter}.h5"
+    img_fmt: str = "{type}_iter{iter.total_iter:03}.{ext}"
+    hdf5_fmt: str = "iter{iter.total_iter:03}.h5"
 
 
 class EnginePlan(Dataclass, kw_only=True):

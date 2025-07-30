@@ -177,7 +177,6 @@ class EngineArgs(t.TypedDict):
     dtype: DTypeLike
     xp: t.Any
     recons_name: str
-    engine_i: int
     observer: 'Observer'
     seed: t.Any
 
