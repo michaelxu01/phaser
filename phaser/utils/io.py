@@ -6,7 +6,7 @@ import numpy
 from numpy.typing import NDArray
 import h5py
 
-from phaser.utils.num import Sampling, to_numpy, get_array_module
+from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.object import ObjectSampling
 from phaser.state import ReconsState, IterState, ProbeState, ObjectState, ProgressState, PartialReconsState
 
@@ -324,8 +324,6 @@ def _hdf5_write_nullable_dataset(group: h5py.Group, name: str, data: t.Optional[
         group.create_dataset(name, data=to_numpy(data.astype(dtype)))
     else:
         group.create_dataset(name, dtype=h5py.Empty(dtype))
-
-        numpy.array(1, dtype=numpy.floating)
 
 
 def tiff_write_opts(
