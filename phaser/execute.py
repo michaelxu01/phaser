@@ -7,7 +7,7 @@ import numpy
 import pane
 
 from phaser.types import EarlyTermination
-from phaser.utils.num import cast_array_module, get_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype
+from phaser.utils.num import cast_array_module, get_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype, xp_is_torch
 from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
@@ -333,8 +333,8 @@ def initialize_reconstruction(
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
     # TODO: more graceful
-    if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
-        raise ValueError("The gradient descent engine requires the jax backend.")
+    if isinstance(engine, GradientEnginePlan) and not (xp_is_jax(xp) or xp_is_torch(xp)):
+        raise ValueError("The gradient descent engine requires the 'jax' or 'torch' backend.")
 
     state = state.to_xp(xp)
 

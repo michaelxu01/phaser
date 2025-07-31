@@ -5,7 +5,7 @@ General numeric utilities.
 import functools
 import logging
 import warnings
-from types import ModuleType
+from types import ModuleType, EllipsisType
 import typing as t
 import sys
 
@@ -29,10 +29,10 @@ T = t.TypeVar('T')
 P = t.ParamSpec('P')
 
 IndexLike: t.TypeAlias = t.Union[
-    int, slice, Ellipsis,
+    int, slice, EllipsisType,
     NDArray[numpy.integer[t.Any]],
     NDArray[numpy.bool_],
-    t.Tuple[t.Union[int, slice, Ellipsis, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
+    t.Tuple[t.Union[int, slice, EllipsisType, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
 ]
 
 logger = logging.getLogger(__name__)
@@ -60,9 +60,7 @@ def _load_torch() -> ModuleType:
     return t.cast(ModuleType, mock_torch)
 
 
-_NAME_REMAP: t.Dict[BackendName, BackendName] = {
-    'pytorch': 'torch',
-}
+_NAME_REMAP: t.Dict[BackendName, BackendName] = {}
 
 _LOAD_FNS: t.Dict[BackendName, t.Callable[[], ModuleType]] = {
     'cupy': _load_cupy,
@@ -552,10 +550,10 @@ def abs2(x: ArrayLike) -> NDArray[numpy.floating]:
 
     if xp_is_torch(xp):
         if not xp.is_complex(x):  # type: ignore
-            return x**2
+            return x**2  # type: ignore
     else:
         if not xp.iscomplexobj(x):
-            return x**2
+            return x**2  # type: ignore
 
     return x.real**2 + x.imag**2  # type: ignore
 

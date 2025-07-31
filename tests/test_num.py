@@ -203,8 +203,8 @@ def test_to_array(backend: BackendName):
     )
 
 
-@with_backends('cpu', 'jax', 'cuda')
-def test_ufunc_outer(backend: str):
+@with_backends('numpy', 'jax', 'cupy')
+def test_ufunc_outer(backend: BackendName):
     xp = get_backend_module(backend)
 
     xs = numpy.arange(12).reshape(4, 3)
