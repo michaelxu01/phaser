@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from typing_extensions import Self
 
 from phaser.utils.num import Sampling, to_numpy, get_array_module, Float
-from phaser.utils.misc import tree_dataclass
+from phaser.utils.tree import tree_dataclass
 from phaser.utils.object import ObjectSampling
 
 if t.TYPE_CHECKING:

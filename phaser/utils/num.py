@@ -3,6 +3,7 @@ General numeric utilities.
 """
 
 import functools
+from itertools import chain
 import logging
 import warnings
 from types import ModuleType, EllipsisType
@@ -13,7 +14,7 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from phaser.types import BackendName
-from .misc import tree_dataclass
+from .tree import tree_dataclass
 
 
 if t.TYPE_CHECKING:
@@ -142,11 +143,18 @@ def get_default_backend() -> BackendName:
 
 def get_array_module(*arrs: t.Optional[ArrayLike]):
     if (xp := _BACKEND_LOADER.get('jax')) is not None:
-        # TODO: detect pytrees as well?
-        if any(isinstance(arr, xp.ndarray) for arr in arrs):
-           return xp
+        import jax.tree
+        if any(
+            isinstance(arr, xp.ndarray)
+            for arr in chain.from_iterable(map(jax.tree.leaves, arrs))
+        ):
+            return xp
     if (xp := _BACKEND_LOADER.get('torch')) is not None:
-        if any(isinstance(arr, (xp._MockTensor, xp._C.TensorBase)) for arr in arrs):  # type: ignore
+        from torch.utils._pytree import tree_leaves
+        if any(
+            isinstance(arr, (xp._MockTensor, xp._C.TensorBase))  # type: ignore
+            for arr in chain.from_iterable(map(tree_leaves, arrs))
+        ):
             return xp
     if (xp := _BACKEND_LOADER.get('cupy')) is not None:
         if any(isinstance(arr, xp.ndarray) for arr in arrs):
