@@ -36,10 +36,9 @@ def execute_plan(
         try:
             for engine in plan.engines:
                 recons = execute_engine(recons, engine)
-        except EarlyTermination:
-            pass
-
-        recons.observer.finish_recons()
+        except EarlyTermination as e:
+            recons.state = e.state
+        recons.observer.finish_recons(recons.state)
         logging.info("Reconstruction finished!")
     finally:
         recons.observer.close()
@@ -82,10 +81,11 @@ def execute_engine(
             'seed': None,
         })
     except EarlyTermination as e:
-        engine_observer.finish_engine()
+        recons.state = e.state
+        engine_observer.finish_engine(recons.state)
 
         if not e.continue_next_engine:
-            engine_observer.finish_recons()
+            engine_observer.finish_recons(recons.state)
             raise
 
     return recons

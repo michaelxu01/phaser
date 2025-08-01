@@ -286,7 +286,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])
         observer.update_iteration(state, i, props.niter, loss)
 
-    observer.finish_engine()
+    observer.finish_engine(state)
     return state
 
 

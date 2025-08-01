@@ -119,5 +119,5 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         observer.update_iteration(sim.state, i, props.niter, error)
 
-    observer.finish_engine()
+    observer.finish_engine(sim.state)
     return sim.state

@@ -11,6 +11,7 @@ from phaser.types import EarlyTermination, flag_any_true, process_flag
 
 if t.TYPE_CHECKING:
     from phaser.hooks.schedule import FlagArgs
+    from typing_extensions import Self
 
 P = t.ParamSpec('P')
 
@@ -46,11 +47,11 @@ class Observer(contextlib.AbstractContextManager):
         """Called when an iteration is finished, with updated reconstruction state."""
         pass
 
-    def finish_engine(self):
+    def finish_engine(self, state: ReconsState):
         """Called when an engine is finished"""
         pass
 
-    def finish_recons(self):
+    def finish_recons(self, state: ReconsState):
         """Called when the reconstruction is finished"""
         pass
 
@@ -59,7 +60,7 @@ class Observer(contextlib.AbstractContextManager):
         pass
 
     @t.final
-    def __enter__(self) -> t.Self:
+    def __enter__(self) -> 'Self':
         return self
 
     @t.final
@@ -125,13 +126,13 @@ class LoggingObserver(Observer):
         self.logger.info(f"Finished iter {i:{w}}/{n}{time_s}{error_s}")
         self.iter_start_time = finish_time
 
-    def finish_engine(self):
+    def finish_engine(self, state: ReconsState):
         self.logger.info("Engine finished!")
         if self.engine_start_time is not None:
             delta = time.monotonic() - self.engine_start_time
             self.logger.info(f"Total engine time: {self._format_hhmmss(delta)}")
 
-    def finish_recons(self):
+    def finish_recons(self, state: ReconsState):
         self.logger.info("Finished reconstruction!")
         if self.recons_start_time is not None:
             delta = time.monotonic() - self.recons_start_time
@@ -176,7 +177,7 @@ class PatienceObserver(Observer):
 
         if self.no_improvement_iter >= self.patience:
             logging.info(f"Early termination: no improvement for {self.patience} iterations")
-            raise EarlyTermination(self.continue_next_engine)
+            raise EarlyTermination(state, self.continue_next_engine)
 
 
 class SaveObserver(Observer):
@@ -233,12 +234,21 @@ class SaveObserver(Observer):
         assert self.out_dir is not None
         assert self.save_options is not None
 
-        if self.save_flag and self.save_flag({'state': state, 'niter': n}) \
-            or i == n and self.any_state_output:  # force save on last iteration
+        if self.save_flag and self.save_flag({'state': state, 'niter': n}):
             output_state(state, self.out_dir, self.save_options)
 
-        if self.save_images_flag and self.save_images_flag({'state': state, 'niter': n}) \
-            or i == n and self.any_image_output:  # force save on last iteration
+        if self.save_images_flag and self.save_images_flag({'state': state, 'niter': n}):
+            output_images(state, self.out_dir, self.save_options)
+
+    def finish_engine(self, state: ReconsState):
+        from phaser.engines.common.output import output_images, output_state
+        assert self.out_dir is not None
+        assert self.save_options is not None
+
+        if self.any_state_output:
+            output_state(state, self.out_dir, self.save_options)
+
+        if self.any_image_output:
             output_images(state, self.out_dir, self.save_options)
 
     def close(self, exc: t.Optional[BaseException] = None):
@@ -298,12 +308,12 @@ class ObserverSet(Observer):
         ...
 
     @_fwd_to_children
-    def finish_engine(self):
+    def finish_engine(self, state: ReconsState):
         """Called when an engine is finished"""
         ...
 
     @_fwd_to_children
-    def finish_recons(self):
+    def finish_recons(self, state: ReconsState):
         """Called when the reconstruction is finished"""
         ...
 
@@ -312,7 +322,7 @@ class ObserverSet(Observer):
         """Called to clean up, whether the reconstruction succeeded or failed."""
         ...
 
-    def __enter__(self) -> t.Self:  # type: ignore
+    def __enter__(self) -> 'Self':  # type: ignore
         for observer in self.inner:
             observer.__enter__()
         return self

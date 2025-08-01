@@ -99,26 +99,26 @@ def test_load_raw_data_prev_state(caplog):
 
     xp = numpy
     with caplog.at_level(logging.WARNING):
-        patterns, state = initialize_reconstruction(ReconsPlan.from_data(plan), xp, init_state=PartialReconsState(
+        recons = initialize_reconstruction(ReconsPlan.from_data(plan), xp=xp, init_state=PartialReconsState(
             wavelength=2.0, probe=probe_state,
         ))
 
     assert "Wavelength of reconstruction (1.00e+00) doesn't match wavelength of previous state (2.00e+00)" in caplog.text
     assert "Mean pattern intensity is very low (0.0 particles)." in caplog.text
-    assert state.probe is probe_state
+    assert recons.state.probe is probe_state
 
     plan['init'] = {
         'scan': {}
     }
 
-    patterns, state = initialize_reconstruction(ReconsPlan.from_data(plan), xp, init_state=PartialReconsState(
+    recons = initialize_reconstruction(ReconsPlan.from_data(plan), xp=xp, init_state=PartialReconsState(
         wavelength=2.0, probe=probe_state, scan=scan_state
     ))
 
     # probe from state overrides probe from raw data
-    assert state.probe is probe_state
+    assert recons.state.probe is probe_state
     # but scan should be modeled
-    assert state.scan is not scan_state
+    assert recons.state.scan is not scan_state
 
     plan['init'] = {
         'scan': {},
@@ -129,10 +129,10 @@ def test_load_raw_data_prev_state(caplog):
         }
     }
 
-    patterns, state = initialize_reconstruction(ReconsPlan.from_data(plan), xp, init_state=PartialReconsState(
+    recons = initialize_reconstruction(ReconsPlan.from_data(plan), xp=xp, init_state=PartialReconsState(
         wavelength=2.0, probe=probe_state, scan=scan_state
     ))
 
     # both should be modeled
-    assert state.probe is not probe_state
-    assert state.scan is not scan_state
+    assert recons.state.probe is not probe_state
+    assert recons.state.scan is not scan_state
