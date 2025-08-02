@@ -153,6 +153,9 @@ class SolverStates:
 
 
 def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
+    import torch
+    torch.autograd.set_detect_anomaly(True)
+
     #jax.config.update('jax_traceback_filtering', 'off')
     xp = cast_array_module(args['xp'])
     dtype = t.cast(t.Type[numpy.floating], args['dtype'])
@@ -309,19 +312,22 @@ def run_group(
 ) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], SolverStates]:
     xp = cast_array_module(xp)
 
-    ((loss, solver_states), grad) = tree.value_and_grad(run_model, has_aux=True, xp=xp)(
+    #print(f"in: {extract_vars(state, vars, group)[0]}")
+
+    ((loss, solver_states), grad) = tree.value_and_grad(run_model, has_aux=True, xp=xp, sign=-1)(
         *extract_vars(state, vars, group),
         group=group, props=props, group_patterns=group_patterns, pattern_mask=pattern_mask,
         noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,
         xp=xp, dtype=dtype
     )
-    # steepest descent direction
-    grad = tree.map(lambda v: -v.conj(), grad, is_leaf=lambda x: x is None)
     for k in grad.keys():
         if k == 'probe':
             grad[k] /= group.shape[-1]
         else:
             grad[k] /= probe_int * group.shape[-1]
+
+    #print(f"obj grad: {xp.max(abs2(grad['object']))}")
+    #print(f"probe grad: {xp.max(abs2(grad['probe'])) if 'probe' in grad else None}")
 
     # update iter grads at group
     iter_grads = tree.map(lambda v1, v2: at(v1, tuple(group)).set(v2), iter_grads, filter_vars(grad, vars & _PER_ITER_VARS))

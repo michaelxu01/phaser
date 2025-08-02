@@ -2,7 +2,8 @@ import dataclasses
 from functools import wraps
 import typing as t
 
-from numpy.typing import ArrayLike, DTypeLike
+import numpy
+from numpy.typing import ArrayLike, DTypeLike, NDArray
 from typing_extensions import Self, dataclass_transform
 
 T = t.TypeVar('T')
@@ -156,22 +157,35 @@ def value_and_grad(
     f: t.Callable,
     argnums: t.Union[int, t.Tuple[int, ...]] = 0,
     has_aux: bool = False, *, xp: t.Optional[t.Any] = None,
+    sign: float = 1.0,
 ) -> t.Callable[..., t.Tuple[Tree, Tree]]:
     from phaser.utils.num import xp_is_torch, xp_is_jax
 
     if xp is None or xp_is_jax(xp):
         import jax  # type: ignore
-        return jax.value_and_grad(f, argnums, has_aux=has_aux)
+        f = jax.value_and_grad(f, argnums, has_aux=has_aux)
+
+        @wraps(f)
+        def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
+            (value, grad) = f(*args, **kwargs)
+            # conjugate to get Wirtinger derivative, multiply by sign
+            grad = map(lambda arr: arr.conj() * sign, grad, is_leaf=lambda x: x is None)
+            return (value, grad)
+
+        return wrapper
+
     if not xp_is_torch(xp):
         raise ValueError("`grad` is only supported for backends 'jax' and 'torch'")
 
     import torch.func  # type: ignore
     f = torch.func.grad_and_value(f, argnums, has_aux=has_aux)
 
-    # flip order of return values
     @wraps(f)
     def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
+        # flip order of return values
         (grad, value) = f(*args, **kwargs)
+        # multiply by sign
+        grad = map(lambda arr: arr * sign, grad, is_leaf=lambda x: x is None)
         return (value, grad)
 
     return wrapper
@@ -247,6 +261,46 @@ def conj(
     from phaser.utils.num import get_array_module
     xp = get_array_module(tree)
     return map(xp.conj, tree)
+
+
+def update_moment(updates: Tree, moments: Tree, decay: float, order: int) -> Tree:
+  return map(
+      lambda g, t: (
+          (1 - decay) * (g**order) + decay * t if g is not None else None
+      ),
+      updates,
+      moments,
+      is_leaf=lambda x: x is None,
+  )
+
+
+def update_moment_per_elem_norm(updates: Tree, moments: Tree, decay: float, order: int) -> Tree:
+    from phaser.utils.num import get_array_module, abs2
+    xp = get_array_module(updates, moments)
+
+    def orderth_norm(g):
+        if xp.isrealobj(g):
+            return g ** order
+
+        half_order = order / 2
+        # JAX generates different HLO for int and float `order`
+        if half_order.is_integer():
+            half_order = int(half_order)
+        return abs2(g) ** half_order
+
+    return map(
+        lambda g, t: (
+            (1 - decay) * orderth_norm(g) + decay * t if g is not None else None
+        ),
+        updates,
+        moments,
+        is_leaf=lambda x: x is None,
+    )
+
+
+def bias_correction(moment: Tree, decay: float, count: t.Union[int, NDArray[numpy.integer]]) -> Tree:
+    bias_correction = t.cast(NDArray[numpy.floating], 1 - decay**count)
+    return map(lambda t: t / bias_correction.astype(t.dtype), moment)
 
 
 @t.overload

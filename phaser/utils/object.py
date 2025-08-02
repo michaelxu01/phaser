@@ -12,7 +12,7 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 from typing_extensions import Self
 
-from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
+from .num import get_array_module, cast_array_module, is_torch, to_real_dtype, as_numpy, at
 from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .tree import tree_dataclass
 from .misc import create_rng
@@ -297,7 +297,7 @@ class ObjectSampling:
         # e.g. a 2x2 cutout needs shifted by s/2
         shift = -xp.maximum(0., (xp.array(cutout_shape[-2:]) - 1.)) / 2.
 
-        return ((pos - xp.array(self.corner)) / xp.array(self.sampling) + shift).astype(numpy.float64)  # type: ignore
+        return ((pos - xp.array(self.corner.copy())) / xp.array(self.sampling.copy()) + shift).astype(numpy.float64)  # type: ignore
 
     def slice_at_pos(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> t.Tuple[slice, slice]:
         """
@@ -330,7 +330,7 @@ class ObjectSampling:
         xp = get_array_module(pos)
 
         pos = self._pos_to_object_idx(as_array(pos), cutout_shape)
-        return (pos - xp.round(pos)).astype(numpy.float64) * xp.array(self.sampling)
+        return (pos - xp.round(pos)).astype(numpy.float64) * xp.asarray(self.sampling, copy=True)
 
     @t.overload
     def cutout(  # pyright: ignore[reportOverlappingOverload]
@@ -504,6 +504,10 @@ class ObjectCutout(t.Generic[DTypeT]):
         if is_jax(self.obj):
             from ._jax_kernels import get_cutouts
             return t.cast(NDArray[DTypeT], get_cutouts(self.obj, self._start_idxs, tuple(self.cutout_shape)))
+
+        if is_torch(self.obj):
+            from ._torch_kernels import get_cutouts
+            return get_cutouts(self.obj, self._start_idxs, tuple(self.cutout_shape))  # type: ignore
 
         if is_cupy(self.obj):
             try:

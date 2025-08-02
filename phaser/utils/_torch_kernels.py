@@ -10,6 +10,22 @@ import torch
 from phaser.utils.num import _PadMode
 
 
+def get_cutouts(obj: torch.Tensor, start_idxs: torch.Tensor, cutout_shape: t.Tuple[int, int]) -> torch.Tensor:
+    out_shape = (*start_idxs.shape[:-1], *obj.shape[:-2], *cutout_shape)
+
+    # vmap version (broken)
+    #out = torch.vmap(lambda idx: obj[..., idx[0]:idx[0]+cutout_shape[0], idx[1]:idx[1]+cutout_shape[1]])(
+    #    start_idxs.reshape(-1, 2)
+    #).reshape(out_shape)
+
+    out = torch.stack([
+        obj[..., i:i+cutout_shape[0], j:j+cutout_shape[1]]
+        for (i, j) in start_idxs.reshape(-1, 2)
+    ], dim=0).reshape(out_shape)
+
+    return out
+
+
 class _MockModule:
     def __init__(self, module: ModuleType, rewrites: t.Dict[str, t.Callable], wrap: t.Callable):
         self._inner: ModuleType = module
@@ -259,6 +275,16 @@ def size(arr: torch.Tensor, axis: t.Optional[int]) -> int:
     return arr.size(axis) if axis is not None else arr.numel()
 
 
+def asarray(
+    arr: t.Any, dtype: t.Union[str, torch.dtype, numpy.dtype, t.Type[numpy.generic], None] = None, *,
+    copy: t.Optional[bool] = None,
+) -> _MockTensor:
+    dtype = to_torch_dtype(dtype) if dtype is not None else None
+    requires_grad = arr.requires_grad if isinstance(arr, torch.Tensor) else False
+
+    return _MockTensor(torch.asarray(arr, dtype=dtype, requires_grad=requires_grad, copy=copy))
+
+
 def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
     try:
         kwargs['dtype'] = to_torch_dtype(kwargs['dtype'])
@@ -273,6 +299,10 @@ def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
         except KeyError:
             pass
 
+    if f is torch.asarray and isinstance(args[0], numpy.ndarray):
+        if not args[0].flags['W']:
+            raise ValueError()
+
     result = f(*args, **kwargs)
     # TODO: deal with tuples of output, pytrees, etc. here
     # this will result in some nasty bugs
@@ -283,6 +313,7 @@ def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
 
 mock_torch = _MockModule(torch, {
     'torch.array': functools.update_wrapper(lambda *args, **kwargs: _MockTensor(_wrap_call(torch.asarray, *args, **kwargs)), torch.asarray),  # type: ignore
+    'torch.asarray': asarray,
     'torch.mod': functools.update_wrapper(lambda *args, **kwargs: _MockTensor(_wrap_call(torch.remainder, *args, **kwargs)), torch.remainder),  # type: ignore
     'torch.split': split,
     'torch.pad': pad,
@@ -292,6 +323,8 @@ mock_torch = _MockModule(torch, {
     'torch.unwrap': unwrap,
     'torch.indices': indices,
     'torch.size': size,
+    'torch.iscomplexobj': lambda arr: torch.is_complex(arr),
+    'torch.isrealobj': lambda arr: not torch.is_complex(arr),
 }, _wrap_call)
 
 mock_torch._MockTensor = _MockTensor  # type: ignore

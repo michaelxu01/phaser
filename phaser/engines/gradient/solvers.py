@@ -1,8 +1,32 @@
-import logging
+"""
+Gradient-descent solvers
+
+Much of this is adapted from [Optax](https://github.com/google-deepmind/optax),
+but modified to use our generic array and pytree utilities.
+
+Optax is released under the Apache license:
+
+> Copyright 2019 DeepMind Technologies Limited. All Rights Reserved.
+> 
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+> 
+>     http://www.apache.org/licenses/LICENSE-2.0
+> 
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
+"""
+
 import typing as t
 
 import numpy
+from numpy.typing import NDArray
 
+from phaser.utils.num import get_array_module
 import phaser.utils.tree as tree
 from phaser.hooks.solver import GradientSolver, GradientSolverArgs
 from phaser.hooks.schedule import ScheduleLike, Schedule
@@ -11,12 +35,10 @@ from phaser.plan import AdamSolverPlan, PolyakSGDSolverPlan, SGDSolverPlan
 from phaser.state import ReconsState
 from .run import extract_vars
 
-#import optax
-#from optax import GradientTransformation, GradientTransformationExtraArgs
-#from optax.schedules import StatefulSchedule
 OptState: t.TypeAlias = tree.Tree
 Params: t.TypeAlias = tree.Tree
 Updates: t.TypeAlias = Params
+
 
 class TransformInitFn(t.Protocol):
     def __call__(self, params: Params) -> OptState:
@@ -103,9 +125,9 @@ class AdamSolver(ScheduledSolver):
         }
 
         def factory(**kwargs) -> GradientTransformation:
-            return optax.chain(
-                optax.scale_by_adam(props.b1, props.b2, props.eps, props.eps_root, nesterov=props.nesterov),
-                optax.scale_by_learning_rate(learning_rate=kwargs['learning_rate'], flip_sign=False),
+            return chain(
+                scale_by_adam(props.b1, props.b2, props.eps, props.eps_root, nesterov=props.nesterov),
+                scale_by_learning_rate(learning_rate=kwargs['learning_rate']),
             )
 
         super().__init__('adam', factory, hparams, args['params'])
@@ -113,12 +135,15 @@ class AdamSolver(ScheduledSolver):
 
 class PolyakSGDSolver(ScheduledSolver):
     def __init__(self, args: GradientSolverArgs, props: PolyakSGDSolverPlan):
+        raise NotImplementedError()
+
         hparams = {
             'max_learning_rate': props.max_learning_rate,
             'scaling': props.scaling,
         }
 
         def factory(**kwargs) -> GradientTransformation:
+            import optax
             return optax.chain(
                 optax.scale_by_learning_rate(kwargs['scaling'], flip_sign=False),
                 optax.scale_by_polyak(
@@ -187,3 +212,63 @@ def scale_by_learning_rate(
         return updates, state
 
     return GradientTransformation(lambda params: None, update_fn)
+
+
+class ScaleByAdamState(t.NamedTuple):
+    n: NDArray[numpy.int32]  # shape ()
+    mu: Updates
+    nu: Updates
+
+
+def scale_by_adam(
+    b1: float = 0.9,
+    b2: float = 0.999,
+    eps: float = 1e-8,
+    eps_root: float = 0.0,
+    mu_dtype: t.Optional[t.Any] = None,
+    *,
+    nesterov: bool = False,
+) -> GradientTransformation:
+    def init_fn(params: Params) -> ScaleByAdamState:
+        xp = get_array_module(params)
+        mu = tree.zeros_like(params, dtype=mu_dtype)  # First moment
+        nu = tree.zeros_like(params)  # Second moment
+        return ScaleByAdamState(n=xp.zeros((), dtype=xp.int32), mu=mu, nu=nu)
+
+    def update_fn(
+        updates: Updates, state: ScaleByAdamState, params: t.Any = None, **kwargs: t.Any
+    ) -> t.Tuple[Updates, ScaleByAdamState]:
+        xp = get_array_module(updates)
+        del params
+        mu = tree.update_moment(updates, state.mu, b1, 1)
+        nu = tree.update_moment_per_elem_norm(updates, state.nu, b2, 2)
+        n_inc = safe_increment(state.n)
+        if nesterov:
+            mu_hat = tree.map(
+                lambda m, g: b1 * m + (1 - b1) * g,
+                tree.bias_correction(mu, b1, safe_increment(n_inc)),
+                tree.bias_correction(updates, b1, n_inc),
+            )
+        else:
+            mu_hat = tree.bias_correction(mu, b1, n_inc)
+            nu_hat = tree.bias_correction(nu, b2, n_inc)
+            updates = tree.map(
+                lambda m, v: None if m is None else m / (xp.sqrt(v + eps_root) + eps),
+                mu_hat,
+                nu_hat,
+                is_leaf=lambda x: x is None,
+            )
+            mu = tree.cast(mu, mu_dtype)
+        return updates, ScaleByAdamState(n=n_inc, mu=mu, nu=nu)
+
+    return GradientTransformation(init_fn, update_fn)
+
+
+def safe_increment(n: NDArray[numpy.int32]) -> NDArray[numpy.int32]:
+    xp = get_array_module(n)
+
+    max_value = xp.iinfo(n.dtype).max
+    max_value = xp.array(max_value, dtype=n.dtype)
+    return xp.where(
+        n < max_value, n + xp.ones_like(n), max_value
+    )
