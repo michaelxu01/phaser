@@ -470,7 +470,7 @@ class ObjectSampling:
         sampling = numpy.broadcast_to(sampling, (2,))
         new_shape = numpy.ceil(self.sampling / sampling * self.shape).astype(int)
         growth = sampling * new_shape - self.sampling * self.shape
-        assert numpy.all(growth >= 0.)
+        assert numpy.all(growth / self.sampling >= -1e-4)  # make sure we grow
         return self.__class__(
             shape=tuple(new_shape),
             sampling=sampling,
@@ -553,7 +553,7 @@ class ObjectCutout(t.Generic[DTypeT]):
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] += view[idx]
+            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] += view[idx]  # type: ignore
         return self
 
     def _with_obj(self, obj: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:

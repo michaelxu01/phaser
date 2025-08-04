@@ -4,7 +4,6 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.types import Dataclass
-from dataclasses import field
 from phaser.utils.num import Float
 from . import Hook
 

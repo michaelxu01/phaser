@@ -68,7 +68,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
 
     # flatten scan, tilt, and patterns
     scan = args['state'].scan.reshape(-1, 2)
-    tilt = args['state'].tilt.reshape(-1, 2)
+    tilt = None if args['state'].tilt is None else args['state'].tilt.reshape(-1, 2)
     patterns = args['data'].patterns.reshape(-1, *args['data'].patterns.shape[-2:])
 
     fraction_nan = xp.sum(xp.isnan(patterns), axis=(-1, -2)) / xp.prod(patterns.shape[-2:])
@@ -86,6 +86,13 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
             raise ValueError(f"# of scan positions {scan.shape[0]} doesn't match # of patterns"
                              f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
         # otherwise, we assume the mask has already been applied to the scan
+
+        if tilt is not None:
+            if tilt.shape[0] == mask.size:
+                tilt = tilt[~mask]
+            elif tilt.shape[0] != patterns.shape[0]:
+                raise ValueError(f"# of tilt positions {tilt.shape[0]} doesn't match # of patterns"
+                                f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
 
     args['state'].scan = scan
     args['state'].tilt = tilt

@@ -1,6 +1,7 @@
 import dataclasses
 import logging
 import signal
+import socket
 import sys
 import traceback
 import time
@@ -11,8 +12,9 @@ import requests
 
 import pane
 
-from phaser.execute import execute_plan, Observer, ReconsPlan
+from phaser.execute import execute_plan, Observer, ReconsPlan, EnginePlan
 from phaser.state import ReconsState, PartialReconsState
+from phaser.utils.num import detect_supported_backends
 
 from .types import (
     ConnectMessage, PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
@@ -64,8 +66,10 @@ class WorkerObserver(Observer):
             self.job_id
         ))
 
-    def init_solver(self, init_state: ReconsState, engine_i: int):
-        super().init_solver(init_state, engine_i)
+    def init_engine(
+        self, init_state: ReconsState, *, recons_name: str,
+        plan: EnginePlan, **kwargs: t.Any
+    ):
         self.send_update(init_state)
 
     def heartbeat(self):
@@ -73,18 +77,19 @@ class WorkerObserver(Observer):
             self.send_message(PingMessage())
 
     def update_group(self, state: t.Union[ReconsState, PartialReconsState], force: bool = False):
-        super().update_group(state)
-
         # update if we haven't updated in a while
         if force or (time.monotonic() - self.msg_time) > 30.0:
             self.send_update(state)
 
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
-        super().update_iteration(state, i, n, error=error)
+    def update_iteration(self, state: ReconsState, i: int, n: int, error: t.Optional[float] = None):
         self.send_update(state)
 
 
 def run_worker(url: str, quiet: bool = False):
+    connect_message = ConnectMessage(
+        hostname=socket.gethostname(), backends=t.cast(t.Dict[str, t.Tuple[str, ...]], detect_supported_backends())
+    )
+
     def send_message(msg: WorkerMessage) -> ServerResponse:
         body = msg.into_data()
         resp: requests.Response = requests.post(url, json=body)
@@ -105,7 +110,7 @@ def run_worker(url: str, quiet: bool = False):
                           max_tries=10, max_time=30,
                           giveup=lambda e: isinstance(e, requests.HTTPError))  # giveup on 404, etc.
     def startup() -> ServerResponse:
-        return send_message(ConnectMessage())
+        return send_message(connect_message)
 
     # poll for a job from the server
     # for timeouts, we will eventualy fail and exit the loop
@@ -153,7 +158,7 @@ def run_worker(url: str, quiet: bool = False):
                 log_handler.job_id = resp.job_id
 
                 plan = ReconsPlan.from_jsons(resp.plan)
-                execute_plan(plan, WorkerObserver(resp.job_id, send_message))
+                execute_plan(plan, observers=WorkerObserver(resp.job_id, send_message))
 
             except SignalException as e:
                 logger.info("Job cancelled", extra={'local': True})

@@ -1,4 +1,5 @@
 from functools import partial
+import logging
 from pathlib import Path
 import typing as t
 
@@ -181,13 +182,13 @@ def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
     fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
 
     ax.set_aspect(1.)
-    [l, r, b, t] = state.object.sampling.mpl_extent()
-    ax.set_xlim(l, r)
-    ax.set_ylim(b, t)
+    [left, right, bottom, top] = state.object.sampling.mpl_extent()
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
 
     scan = to_numpy(state.scan)
     i = numpy.arange(scan[..., 0].size)
-    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, s=0.2, cmap='plasma')
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, cmap='plasma', s=0.5, edgecolors='none')
 
     fig.savefig(out_path)
     pyplot.close(fig)
@@ -196,19 +197,24 @@ def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
 def _plot_tilt(state: ReconsState, out_path: Path, options: SaveOptions):
     from matplotlib import pyplot
 
+    if state.tilt is None:
+        logger = logging.getLogger(__name__)
+        logger.warning("Tilt map (`state.tilt`) is missing, skipping `plot_tilt`")
+        return
+
     fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
 
     ax.set_aspect(1.)
-    [l, r, b, t] = state.object.sampling.mpl_extent()
-    ax.set_xlim(l, r)
-    ax.set_ylim(b, t)
+    [left, right, bottom, top] = state.object.sampling.mpl_extent()
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
 
     scan = to_numpy(state.scan)
     tilt = to_numpy(state.tilt)
     tilt = tilt[..., 1] + tilt[..., 0]*1.j
     max_tilt = max(numpy.max(numpy.abs(tilt)), 1.0)  # at least 1 mrad
-    c = colorize_complex(tilt / max_tilt, amp=True, rescale=False)
-    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c.ravel(), s=0.2)
+    c = colorize_complex(tilt.ravel() / max_tilt, amp=True, rescale=False)
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c, s=0.5, edgecolors='none')
 
     fig.draw_without_rendering()
     trans = ax.transAxes + fig.transFigure.inverted()

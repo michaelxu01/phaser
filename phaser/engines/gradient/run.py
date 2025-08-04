@@ -1,7 +1,5 @@
-import contextlib
 import logging
 from functools import partial
-from pathlib import Path
 import typing as t
 
 import numpy
@@ -9,21 +7,19 @@ from numpy.typing import NDArray
 from typing_extensions import Self
 
 from phaser.hooks.solver import NoiseModel
-from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
+from phaser.utils.misc import jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
+    fft2, ifft2, abs2, check_finite, at, Float, to_real_dtype
 )
 from phaser.utils.optics import fourier_shift_filter
-from phaser.utils.io import OutputDir
-from phaser.execute import Observer
+from phaser.observer import Observer
 from phaser.state import ReconsState
 from phaser.hooks import EngineArgs
 from phaser.hooks.solver import GradientSolver
 from phaser.hooks.regularization import CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
-from phaser.types import process_flag, flag_any_true, ReconsVar
-from ..common.output import output_images, output_state
+from phaser.types import process_flag, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
 
 
@@ -101,9 +97,7 @@ def insert_vars(vars: t.Dict[ReconsVar, t.Any], state: ReconsState, group: t.Opt
         if (var := _PATH_MAP.get(path)):
             if var in vars:
                 return vars[var]
-            if val is None:
-                raise ValueError(f"Missing value for var {var}")
-            if var in _PER_ITER_VARS and group is not None:
+            if var in _PER_ITER_VARS and val is not None and group is not None:
                 return val[tuple(group)]
         return val
 
@@ -167,13 +161,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
     xp = cast_array_module(jax.numpy)
     dtype = t.cast(t.Type[numpy.floating], args['dtype'])
-
-    observer: Observer = args.get('observer', [])
-    recons_name = args['recons_name']
-    engine_i = args['engine_i']
-
-    logger.info(f"Starting engine #{args['engine_i'] + 1}...")
-
+    observer: Observer = args.get('observer', Observer())
     state = args['state']
     seed = args['seed']
     patterns = args['data'].patterns
@@ -193,127 +181,112 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         'positions': process_flag(props.update_positions),
         'tilt': process_flag(props.update_tilt),
     }
-    save = process_flag(props.save)
-    save_images = process_flag(props.save_images)
     # shuffle_groups defaults to True for sparse groups, False for compact groups
     shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
     groups = GroupManager(state.scan, props.grouping, props.compact, seed)
 
-    any_output = flag_any_true(save, props.niter) or flag_any_true(save_images, props.niter)
+    observer.init_engine(
+        state, recons_name=args['recons_name'],
+        plan=props, noise_model=noise_model.name(),
+    )
+    start_i = state.iter.total_iter
 
-    # TODO: this really needs cleanup
+    propagators = make_propagators(state, props.bwlim_frac)
 
+    # runs rescaling
+    rescale_factors = []
+    for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan),
+                                                                        patterns, xp=xp, buf_n=props.buffer_n_groups)):
+        group_rescale_factors = dry_run(state, group, propagators, group_patterns, xp=xp, dtype=dtype)
+        rescale_factors.append(group_rescale_factors)
 
-    with OutputDir(
-        props.save_options.out_dir, any_output,
-        engine_i=engine_i, name=recons_name,
-        group=groups.grouping, niter=props.niter,
-        noise_model=noise_model.name(),
-    ) as out_dir:
-        propagators = make_propagators(state, props.bwlim_frac)
+    rescale_factors = xp.concatenate(rescale_factors, axis=0)
+    rescale_factor = xp.mean(rescale_factors)
 
-        start_i = state.iter.total_iter
-        observer.init_solver(state, engine_i)
+    logger.info("Pre-calculated intensities")
+    logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+    state.probe.data *= xp.sqrt(rescale_factor)
+    probe_int = xp.sum(abs2(state.probe.data))
 
-        # runs rescaling
-        rescale_factors = []
-        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan),
+    observer.start_engine(state)
+
+    solver_states = SolverStates.init_state(state, xp, noise_model, group_solvers, regularizers, group_constraints)
+    iter_solver_states = [solver.init_state(state) for solver in iter_solvers]
+    iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
+
+    #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+    for i in range(1, props.niter+1):
+        state.iter.engine_iter = i
+        state.iter.total_iter = start_i + i
+
+        # mask vars we're updating this iteration
+        iter_vars = all_vars & t.cast(t.Set[ReconsVar],
+            set(k for (k, flag) in flags.items() if flag({'state': state, 'niter': props.niter}))
+        )
+        # gradients for per-iteration solvers
+        iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
+        # whether to shuffle groups this iteration
+        iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
+
+        # update schedules for this iteration
+        # this needs to be done outside the JIT context, which makes this kinda hacky
+        solver_states.group_solver_states = [
+            solver.update_for_iter(state, solver_state, props.niter)
+            for (solver, solver_state) in zip(group_solvers, solver_states.group_solver_states)
+        ]
+        iter_solver_states = [
+            solver.update_for_iter(state, solver_state, props.niter)
+            for (solver, solver_state) in zip(iter_solvers, iter_solver_states)
+        ]
+        losses = []
+
+        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
                                                                             patterns, xp=xp, buf_n=props.buffer_n_groups)):
-            group_rescale_factors = dry_run(state, group, propagators, group_patterns, xp=xp, dtype=dtype)
-            rescale_factors.append(group_rescale_factors)
-
-        rescale_factors = xp.concatenate(rescale_factors, axis=0)
-        rescale_factor = xp.mean(rescale_factors)
-
-        logger.info("Pre-calculated intensities")
-        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
-        state.probe.data *= xp.sqrt(rescale_factor)
-        probe_int = xp.sum(abs2(state.probe.data))
-
-        observer.start_solver()
-
-        solver_states = SolverStates.init_state(state, xp, noise_model, group_solvers, regularizers, group_constraints)
-        iter_solver_states = [solver.init_state(state) for solver in iter_solvers]
-        iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
-
-        #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
-        for i in range(1, props.niter+1):
-            losses = []
-
-            # mask vars we're updating this iteration
-            iter_vars = all_vars & t.cast(t.Set[ReconsVar],
-                set(k for (k, flag) in flags.items() if flag({'state': state, 'niter': props.niter}))
+            (state, loss, iter_grads, solver_states) = run_group(
+                state, group=group, vars=iter_vars,
+                noise_model=noise_model,
+                group_solvers=group_solvers,
+                group_constraints=group_constraints,
+                regularizers=regularizers,
+                iter_grads=iter_grads,
+                solver_states=solver_states,
+                props=propagators,
+                group_patterns=group_patterns, #load_group(group),
+                pattern_mask=pattern_mask,
+                probe_int=probe_int,
+                xp=xp, dtype=dtype
             )
-            # gradients for per-iteration solvers
-            iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
-            # whether to shuffle groups this iteration
-            iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
 
-            # update schedules for this iteration
-            # this needs to be done outside the JIT context, which makes this kinda hacky
-            solver_states.group_solver_states = [
-                solver.update_for_iter(state, solver_state, props.niter)
-                for (solver, solver_state) in zip(group_solvers, solver_states.group_solver_states)
-            ]
-            iter_solver_states = [
-                solver.update_for_iter(state, solver_state, props.niter)
-                for (solver, solver_state) in zip(iter_solvers, iter_solver_states)
-            ]
+            losses.append(loss)
+            check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
+            observer.update_group(state, props.send_every_group)
 
-            for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
-                                                                                patterns, xp=xp, buf_n=props.buffer_n_groups)):
-                (state, loss, iter_grads, solver_states) = run_group(
-                    state, group=group, vars=iter_vars,
-                    noise_model=noise_model,
-                    group_solvers=group_solvers,
-                    group_constraints=group_constraints,
-                    regularizers=regularizers,
-                    iter_grads=iter_grads,
-                    solver_states=solver_states,
-                    props=propagators,
-                    group_patterns=group_patterns, #load_group(group),
-                    pattern_mask=pattern_mask,
-                    probe_int=probe_int,
-                    xp=xp, dtype=dtype
-                )
+        loss = float(numpy.mean(losses))
 
-                losses.append(loss)
-                check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
-                observer.update_group(state, props.send_every_group)
+        # update per-iteration solvers
+        for (sol_i, solver) in enumerate(iter_solvers):
+            solver_grads = filter_vars(iter_grads, solver.params)
+            if len(solver_grads) == 0:
+                continue
+            (update, iter_solver_states[sol_i]) = solver.update(
+                state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss
+            )
+            state = apply_update(state, update)
 
-            loss = float(numpy.mean(losses))
+        for (reg_i, reg) in enumerate(iter_constraints):
+            (state, iter_constraint_states[reg_i]) = reg.apply_iter(
+                state, iter_constraint_states[reg_i]
+            )
 
-            # update per-iteration solvers
-            for (sol_i, solver) in enumerate(iter_solvers):
-                solver_grads = filter_vars(iter_grads, solver.params)
-                if len(solver_grads) == 0:
-                    continue
-                (update, iter_solver_states[sol_i]) = solver.update(
-                    state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss
-                )
-                state = apply_update(state, update)
+        if 'positions' in iter_vars:
+            # check positions are at least overlapping object
+            state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
 
-            for (reg_i, reg) in enumerate(iter_constraints):
-                (state, iter_constraint_states[reg_i]) = reg.apply_iter(
-                    state, iter_constraint_states[reg_i]
-                )
+        state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
+        state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])
+        observer.update_iteration(state, i, props.niter, loss)
 
-            if 'positions' in iter_vars:
-                # check positions are at least overlapping object
-                state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
-
-            observer.update_iteration(state, i, props.niter, loss)
-
-            state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
-            state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])
-
-            if save({'state': state, 'niter': props.niter}):
-                output_state(state, out_dir, props.save_options)
-
-            if save_images({'state': state, 'niter': props.niter}):
-                output_images(state, out_dir, props.save_options)
-
-    observer.finish_solver()
+    observer.finish_engine(state)
     return state
 
 
@@ -402,6 +375,7 @@ def run_model(
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
     xp = get_array_module(sim.probe.data)
     dtype = to_real_dtype(sim.probe.data.dtype)
+    #complex_dtype = to_complex_dtype(dtype)
 
     probes = sim.probe.data
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, group_scan, probes.shape[-2:])
@@ -414,8 +388,8 @@ def run_model(
             return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    props = tilt_propagators(ky, kx, sim, props, group_tilts)
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    t_props = tilt_propagators(ky, kx, sim, props, group_tilts)
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
@@ -427,6 +401,7 @@ def run_model(
             group, sim, solver_states.regularizer_states[reg_i]
         )
         loss += reg_loss
+
     return (loss, solver_states)
 
 
@@ -449,14 +424,14 @@ def dry_run(
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[tuple(group)], probes.shape[-2:])
     group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[tuple(group)], probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
-    props = tilt_propagators(ky, kx, sim, props, sim.tilt[tuple(group)])
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
             return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    t_props = tilt_propagators(ky, kx, sim, props, sim.tilt[tuple(group)] if sim.tilt is not None else None)
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
     exp_intensity = xp.sum(group_patterns, axis=(-2, -1))
 

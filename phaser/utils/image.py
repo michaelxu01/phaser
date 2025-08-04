@@ -59,7 +59,9 @@ def colorize_complex(vals: ArrayLike, amp: bool = False, rescale: bool = True) -
     from matplotlib.colors import hsv_to_rgb
     xp = get_array_module(vals)
 
-    vals = xp.asarray(vals, dtype=numpy.complexfloating)
+    vals = xp.asarray(vals)
+    # promote to complex
+    vals = vals.astype(numpy.promote_types(vals.dtype, numpy.complex64))
 
     v = xp.abs(vals) if amp else abs2(vals)
     if rescale:

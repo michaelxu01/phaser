@@ -68,7 +68,11 @@ async def start_worker(worker_type: str):
         worker = await server.slurm_manager.make_worker(worker_id, url)
 
     await server.workers.add(worker)
-    return json_response(worker.state())
+
+    state = t.cast(t.Dict[str, t.Any], pane.into_data(worker.state()))
+    if isinstance(worker, ManualWorker):
+        state['message'] = f"Start worker using URL: {worker.url}"
+    return json_response(state)
 
 @app.post("/job/start")
 async def start_job():
@@ -80,12 +84,12 @@ async def start_job():
         try:
             jobs = await Job.from_path(d['path'])
         except ValidationError as e:
-            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=400))
     elif source == 'yaml':
         try:
             jobs = await Job.from_yaml(d['data'])
         except ValidationError as e:
-            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=400))
     else:
         abort(Response(f"Unknown source type {source}", 400))
 

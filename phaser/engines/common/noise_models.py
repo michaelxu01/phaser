@@ -93,12 +93,11 @@ class PoissonNoiseModel(NoiseModel[None]):
     ) -> t.Tuple[Float, None]:
         xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
         patterns = xp.maximum(exp_patterns, 0.0)
-        #intensity - patterns * xp.log(intensity + self.offset)
 
         loss = xp.sum(mask * (
-            #model_intensity - patterns * xp.log(model_intensity + self.eps)
-            model_intensity + patterns * (xp.log(patterns + self.eps) - xp.log(model_intensity + self.eps) - 1.0)
-            #patterns - (model_intensity + self.offset) * xp.log(patterns)
+            model_intensity + self.eps + patterns * (
+                xp.log(patterns + self.eps) - xp.log(model_intensity + self.eps) - 1.0
+            )
         )).astype(exp_patterns.dtype)
         return (loss, state)
 

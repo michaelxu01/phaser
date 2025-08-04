@@ -462,6 +462,7 @@ class UnstructuredGaussian:
         from scipy.spatial import KDTree
         obj_samp = sim.object.sampling
         scan_flat = sim.scan.reshape(-1, 2)
+        scan_ndim = sim.scan.ndim - 1
 
         attr = self.getattr_nested(sim, self.attr_path)
         vals = t.cast(NDArray[numpy.inexact], getattr(attr, 'data', attr))  # Extract raw array
@@ -475,7 +476,7 @@ class UnstructuredGaussian:
         tree = KDTree(to_numpy(scan_flat))
         obj_pts = numpy.stack(obj_samp.grid(xp=numpy), axis=-1)
         # val_img should be on GPU
-        val_img = vals.reshape((-1, *vals.shape[2:]))[xp.array(tree.query(obj_pts)[1])]
+        val_img = vals.reshape((-1, *vals.shape[scan_ndim:]))[xp.array(tree.query(obj_pts)[1])]
 
         # blur in Fourier space
         # HACK: the transposes are so we FFT over the first two axes

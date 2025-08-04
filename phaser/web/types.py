@@ -6,7 +6,6 @@ import pane
 from pane.annotations import Tagged
 from typing_extensions import Self
 
-from phaser.types import Cancelled
 from .util import ReconsStateConverter
 
 
@@ -52,7 +51,7 @@ class ValidationError(Exception):
     def __init__(self, msg: str):
         self.msg: str = msg
 
-class SignalException(Cancelled):
+class SignalException(Exception):
     def __init__(self, signal: Signal, urgent: bool = False):
         self.signal: Signal = signal
         self.urgent: bool = urgent
@@ -61,8 +60,13 @@ class SignalException(Cancelled):
 
 class WorkerState(pane.PaneBase):
     worker_id: WorkerID
+    worker_type: str
     status: WorkerStatus
     links: t.Dict[str, str] = pane.field(default_factory=dict)
+    current_job: t.Optional[JobID] = None
+    start_time: t.Optional[datetime.datetime] = None
+    hostname: t.Optional[str] = None
+    backends: t.Optional[t.Dict[str, t.Tuple[str, ...]]] = None
 
 class WorkerUpdate(pane.PaneBase):
     worker_id: WorkerID
@@ -74,13 +78,9 @@ class JobState(pane.PaneBase):
     job_id: JobID
     status: JobStatus
     links: t.Dict[str, str] = pane.field(default_factory=dict)
+    job_name: t.Optional[str] = None
+    start_time: t.Optional[datetime.datetime] = None
     state: t.Dict[str, t.Any] = pane.field(converter=ReconsStateConverter(), default_factory=dict)
-    worker_id: t.Optional[WorkerID] = None
-
-    def strip_state(self) -> Self:
-        return type(self)(
-            self.job_id, self.status, self.links
-        )
 
 class LogRecord(pane.PaneBase):
     i: int
@@ -157,6 +157,10 @@ ManagerMessage: t.TypeAlias = t.Annotated[t.Union[
 
 class ConnectMessage(pane.PaneBase):
     """Message sent when a worker starts up"""
+    hostname: t.Optional[str] = None
+    """Hostname worker is running on, if known"""
+    backends: t.Optional[t.Dict[str, t.Tuple[str, ...]]] = None
+    """Computational backends available to worker, dict from backend -> device"""
     msg: t.Literal['connect'] = 'connect'
 
 class PollMessage(pane.PaneBase):

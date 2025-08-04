@@ -11,6 +11,7 @@ from phaser.utils.object import ObjectSampling
 if t.TYPE_CHECKING:
     from phaser.utils.io import HdfLike
     from phaser.utils.image import _BoundaryMode
+    from phaser.observer import ObserverSet
 
 
 @jax_dataclass
@@ -35,9 +36,16 @@ class IterState():
     total_iter: int
     """Total iteration number. 1-indexed (0 means before any iterations)."""
 
+    n_engine_iters: t.Optional[int] = None
+    """Total number of iterations in this engine."""
+    n_total_iters: t.Optional[int] = None
+    """Total number of iterations in the reconstruction."""
+
     def to_numpy(self) -> Self:
         return self.__class__(
-            int(self.engine_num), int(self.engine_iter), int(self.total_iter)
+            int(self.engine_num), int(self.engine_iter), int(self.total_iter),
+            int(self.n_engine_iters) if self.n_engine_iters else None,
+            int(self.n_total_iters) if self.n_total_iters else None,
         )
 
     def copy(self) -> Self:
@@ -163,7 +171,7 @@ class ReconsState:
     object: ObjectState
     scan: NDArray[numpy.floating]
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
-    tilt: NDArray[numpy.floating]
+    tilt: t.Optional[NDArray[numpy.floating]] = None
     """Tilt angles (y, x) per scan position, in mrad. Shape (..., 2)"""
     progress: ProgressState
 
@@ -173,7 +181,7 @@ class ReconsState:
             probe=self.probe.to_xp(xp),
             object=self.object.to_xp(xp),
             scan=xp.array(self.scan),
-            tilt=xp.array(self.tilt),
+            tilt=None if self.tilt is None else xp.array(self.tilt),
             progress=self.progress,
             wavelength=self.wavelength,
         )
@@ -184,7 +192,7 @@ class ReconsState:
             probe=self.probe.to_numpy(),
             object=self.object.to_numpy(),
             scan=to_numpy(self.scan),
-            tilt=to_numpy(self.tilt),
+            tilt=None if self.tilt is None else to_numpy(self.tilt),
             progress=self.progress.to_numpy(),
             wavelength=float(self.wavelength),
         )
@@ -227,7 +235,7 @@ class PartialReconsState:
         )
 
     def to_complete(self) -> ReconsState:
-        missing = tuple(filter(lambda k: getattr(self, k) is None, ('probe', 'object', 'scan', 'tilt', 'wavelength')))
+        missing = tuple(filter(lambda k: getattr(self, k) is None, ('probe', 'object', 'scan', 'wavelength')))
         if len(missing):
             raise ValueError(f"ReconsState missing {', '.join(map(repr, missing))}")
 
@@ -239,8 +247,7 @@ class PartialReconsState:
             probe=t.cast(ProbeState, self.probe),
             object=t.cast(ObjectState, self.object),
             scan=t.cast(NDArray[numpy.floating], self.scan),
-            tilt=t.cast(NDArray[numpy.floating], self.tilt),
-            progress=progress, iter=iter,
+            tilt=self.tilt, progress=progress, iter=iter,
         )
 
     def write_hdf5(self, file: 'HdfLike'):
@@ -253,4 +260,9 @@ class PartialReconsState:
         return hdf5_read_state(file)
 
 
-StateObserver: t.TypeAlias = t.Callable[[t.Union[ReconsState, PartialReconsState]], t.Any]
+@jax_dataclass(static_fields=('name', 'observer'))
+class PreparedRecons:
+    patterns: Patterns
+    state: ReconsState
+    name: str
+    observer: 'ObserverSet'

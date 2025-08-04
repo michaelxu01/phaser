@@ -2,19 +2,22 @@ import React, { useMemo } from 'react';
 import { atom, useAtom, useAtomValue, Atom, PrimitiveAtom } from 'jotai';
 
 import * as d3_format from 'd3-format';
-import * as d3_array from 'd3-array';
 import { NArray } from 'wasm-array';
 import { np } from '../wasm-array';
+import { useElementSize } from '@mantine/hooks';
 
 import { Transform1D, Transform2D } from './transform';
 import { PlotScale, Pair, isClose } from './scale';
 import { Zoomer } from "./zoom";
+import * as styles from "./plots.module.css";
+export { styles };
 
 export interface AxisSpec {
     scale: PlotScale
 
     translateExtent?: Pair | boolean
     label?: string
+    labelOffset?: number
     show?: boolean | 'one'
 
     ticks?: number
@@ -27,6 +30,7 @@ export interface Axis {
 
     translateExtent: Pair
     label?: string
+    labelOffset?: number
     show: boolean | 'one'
 
     ticks?: number
@@ -140,14 +144,16 @@ export function XAxis(props: AxisProps) {
 
     let cross_pos = (plot.xaxis_pos == "top") ? 0.0 : 1.0;
     let sign = (plot.xaxis_pos == "top") ? -1.0 : 1.0;
-    const className = (plot.xaxis_pos == "top") ? 'top-axis' : 'bot-axis';
+    const className = (plot.xaxis_pos == "top") ? styles['top-axis'] : styles['bot-axis'];
 
     let fullScale = xaxis.scale;
     let scale = fullScale.applyTransform(xtransform);
 
+    const labelOffset = xaxis.labelOffset ?? 50;
+
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(${scale.rangeFromUnit(0.5)}, ${sign * 50})`}>
+        label = <text className={styles["axis-label"]} transform={`translate(${scale.rangeFromUnit(0.5)}, ${sign * labelOffset})`}>
             {props.label}
         </text>;
     }
@@ -161,8 +167,8 @@ export function XAxis(props: AxisProps) {
     let ticks = scale.ticks(xaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
-        return <g className="tick" key={val}>
-            <line x1={pos} x2={pos} y1={0} y2={sign * tickLength} stroke="black"/>
+        return <g className={styles["tick"]} key={val}>
+            <line x1={pos} x2={pos} y1={0} y2={sign * tickLength} stroke="inherit"/>
             <text x={pos} y={sign * tickLength} dy={`${sign*0.9}em`}>{text}</text>
         </g>;
     });
@@ -170,7 +176,7 @@ export function XAxis(props: AxisProps) {
     let ax_ypos = yaxis.scale.rangeFromUnit(cross_pos);
     let [ax_start, ax_stop] = scale.range;
     return <g className={className} transform={`translate(0, ${ax_ypos})`}>
-        <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
+        <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="inherit"/>
         { ticks }
         { label }
     </g>;
@@ -189,14 +195,16 @@ export function YAxis(props: AxisProps) {
 
     let cross_pos = (plot.yaxis_pos == "left") ? 0.0 : 1.0;
     let sign = (plot.yaxis_pos == "left") ? -1.0 : 1.0;
-    const className = (plot.yaxis_pos == "left") ? 'left-axis' : 'right-axis';
+    const className = (plot.yaxis_pos == "left") ? styles['left-axis'] : styles['right-axis'];
 
     let fullScale = yaxis.scale;
     let scale = fullScale.applyTransform(ytransform);
 
+    const labelOffset = yaxis.labelOffset ?? 90;
+
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(${sign * 70}, ${scale.rangeFromUnit(0.5)}) rotate(${sign * -90})`}>
+        label = <text className={styles["axis-label"]} transform={`translate(${sign * labelOffset}, ${scale.rangeFromUnit(0.5)}) rotate(${sign * -90})`}>
             {props.label}
         </text>;
     }
@@ -207,8 +215,8 @@ export function YAxis(props: AxisProps) {
     let ticks = scale.ticks(yaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
-        return <g className="tick" key={val}>
-            <line x1={sign * tickLength} x2={0} y1={pos} y2={pos} stroke="black"/>
+        return <g className={styles["tick"]} key={val}>
+            <line x1={sign * tickLength} x2={0} y1={pos} y2={pos} stroke="inherit"/>
             <text x={sign * tickLength} y={pos} dx={`${sign*0.3}em`} dy="0.4em">{text}</text>
         </g>;
     });
@@ -216,7 +224,7 @@ export function YAxis(props: AxisProps) {
     let ax_xpos = xaxis.scale.rangeFromUnit(cross_pos);
     let [ax_start, ax_stop] = scale.range;
     return <g className={className} transform={`translate(${ax_xpos}, 0)`}>
-        <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="black"/>
+        <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="inherit"/>
         { ticks }
         { label }
     </g>;
@@ -242,7 +250,7 @@ interface PlotProps {
     children?: React.ReactNode
 }
 
-export function Plot(props: PlotProps) {
+export const Plot = React.memo(function Plot (props: PlotProps) {
     //console.log("Redrawing Plot");
 
     const fig = React.useContext(FigureContext);
@@ -261,8 +269,6 @@ export function Plot(props: PlotProps) {
 
     const xaxis_pos = props.xaxis_pos ?? 'bottom';
     const yaxis_pos = props.yaxis_pos ?? 'left';
-
-    
 
     const show_xaxis = props.show_xaxis ?? !!xaxis.show;
     const show_yaxis = props.show_yaxis ?? !!yaxis.show;
@@ -299,12 +305,12 @@ export function Plot(props: PlotProps) {
     };
 
     return <PlotContext.Provider value={ctx}> <Zoomer>
-        <svg className="plot" viewBox={dims.viewBox.join(" ")} width={dims.totalWidth} height={dims.totalHeight}>
+        <svg className={styles["plot"]} viewBox={dims.viewBox.join(" ")} width={dims.totalWidth} height={dims.totalHeight}>
             <clipPath id={clipId}><rect x={0} y={0} width={dims.width} height={dims.height}/></clipPath>
-            <g className="ax-cont">
-                <rect className="ax-box" width={dims.width} height={dims.height}/>
-                <g className="ax-clip" clipPath={`url(#${clipId})`}>
-                    <g className="zoom">
+            <g className={styles["axis-cont"]}>
+                <rect className={styles["axis-box"]} width={dims.width} height={dims.height}/>
+                <g className={styles["axis-clip"]} clipPath={`url(#${clipId})`}>
+                    <g className={styles["zoom"]}>
                         { clippedChildren }
                     </g>
                 </g>
@@ -312,7 +318,10 @@ export function Plot(props: PlotProps) {
             </g>
         </svg>
     </Zoomer> </PlotContext.Provider>;
-}
+});
+
+const isPlot = (val: any): val is React.ReactElement<PlotProps, typeof Plot> =>
+    React.isValidElement(val) && typeof val.type['type'] == "function" && val.type['type'].name == "Plot";
 
 interface PlotDims {
     width: number
@@ -320,6 +329,17 @@ interface PlotDims {
     totalWidth: number
     totalHeight: number
     viewBox: [number, number, number, number]
+}
+
+function calc_axis_size(
+    axis: Axis,
+    pos: 'bottom' | 'top' | 'left' | 'right',
+): number {
+    // todo be smarter here
+    if (['bottom', 'top'].includes(pos)) {
+        return 60;
+    }
+    return 150;
 }
 
 function calc_plot_dims(
@@ -340,16 +360,18 @@ function calc_plot_dims(
     } else {
         [marginTop, marginRight, marginBottom, marginLeft] = [15, 15, 15, 15];
         if (show_xaxis) {
+            const axis_size = calc_axis_size(xaxis, xaxis_pos);
             if (xaxis_pos == 'bottom')
-                marginBottom += 60;
+                marginBottom += axis_size;
             else
-                marginTop += 60;
+                marginTop += axis_size;
         }
         if (show_yaxis) {
+            const axis_size = calc_axis_size(yaxis, yaxis_pos);
             if (yaxis_pos == 'left')
-                marginLeft += 80;
+                marginLeft += axis_size;
             else
-                marginRight += 80;
+                marginRight += axis_size;
         }
     }
 
@@ -378,12 +400,12 @@ interface PlotGridProps {
     children?: React.ReactNode
 }
 
-export function PlotGrid(props: PlotGridProps) {
+const PlotGrid = React.memo(function PlotGrid(props: PlotGridProps) {
     const [ncols, nrows] = [props.ncols, props.nrows];
 
     const fig = React.useContext(FigureContext);
     if (fig === undefined) {
-        throw new Error("Component 'Plot' must be used inside a 'Figure'");
+        throw new Error("Component 'PlotGrid' must be used inside a 'Figure'");
     }
 
     let xaxes: Array<string>;
@@ -418,32 +440,30 @@ export function PlotGrid(props: PlotGridProps) {
     const children = React.Children.map(props.children, (child, i) => {
         const [row, col] = [Math.floor(i / ncols), i % ncols];
 
-        if (React.isValidElement(child) && typeof child.type == "function") {
-            if (child.type.name == "Plot") {
-                const child_props = child.props as PlotProps;
+        if (isPlot(child)) {
+            const child_props = child.props as PlotProps;
 
-                const props_xaxis = child_props.xaxis ?? xaxes[col];
-                const props_yaxis = child_props.yaxis ?? yaxes[row];
-                let xaxis = (typeof props_xaxis === "string") ? fig.axes.get(props_xaxis)! : normalize_axis(props_xaxis);
-                let yaxis = (typeof props_yaxis === "string") ? fig.axes.get(props_yaxis)! : normalize_axis(props_yaxis);
+            const props_xaxis = child_props.xaxis ?? xaxes[col];
+            const props_yaxis = child_props.yaxis ?? yaxes[row];
+            let xaxis = (typeof props_xaxis === "string") ? fig.axes.get(props_xaxis)! : normalize_axis(props_xaxis);
+            let yaxis = (typeof props_yaxis === "string") ? fig.axes.get(props_yaxis)! : normalize_axis(props_yaxis);
 
-                const xaxis_pos = child_props.xaxis_pos ?? 'bottom';
-                const yaxis_pos = child_props.yaxis_pos ?? 'left';
+            const xaxis_pos = child_props.xaxis_pos ?? 'bottom';
+            const yaxis_pos = child_props.yaxis_pos ?? 'left';
 
-                const show_xaxis: boolean = child_props.show_xaxis ?? (
-                    xaxis.show == "one" ? row == (xaxis_pos == 'top' ? 0 : nrows - 1) : xaxis.show
-                );
-                const show_yaxis: boolean = child_props.show_yaxis ?? (
-                    yaxis.show == "one" ? col == (yaxis_pos == 'left' ? 0 : ncols - 1) : yaxis.show
-                );
+            const show_xaxis: boolean = child_props.show_xaxis ?? (
+                xaxis.show == "one" ? row == (xaxis_pos == 'top' ? 0 : nrows - 1) : xaxis.show
+            );
+            const show_yaxis: boolean = child_props.show_yaxis ?? (
+                yaxis.show == "one" ? col == (yaxis_pos == 'left' ? 0 : ncols - 1) : yaxis.show
+            );
 
-                const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, xaxis_pos, yaxis_pos, child.props.margins);
-                widths[col] = Math.max(widths[col], dims.totalWidth);
-                heights[row] = Math.max(heights[row], dims.totalHeight);
+            const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, xaxis_pos, yaxis_pos, child.props.margins);
+            widths[col] = Math.max(widths[col], dims.totalWidth);
+            heights[row] = Math.max(heights[row], dims.totalHeight);
 
-                const plotProps = {xaxis: props_xaxis, yaxis: props_yaxis, show_xaxis: show_xaxis, show_yaxis: show_yaxis};
-                child = React.cloneElement(child, plotProps);
-            }
+            const plotProps = {xaxis: props_xaxis, yaxis: props_yaxis, show_xaxis: show_xaxis, show_yaxis: show_yaxis};
+            child = React.cloneElement(child, plotProps);
         }
 
         const style = {
@@ -464,32 +484,63 @@ export function PlotGrid(props: PlotGridProps) {
     return <div className="plotGrid" style={gridStyle}>
         { children }
     </div>;
+})
+
+interface PlotListProps {
+    xaxis: string;
+    yaxis: string;
+
+    pad?: number; /* = 0px */
+    maxWidth?: number;
+
+    zoomExtent?: [number, number];
+
+    children?: React.ReactNode
 }
 
-/*
+export function PlotList(props: PlotListProps) {
+    const fig = React.useContext(FigureContext);
+    if (fig === undefined) {
+        throw new Error("Component 'PlotList' must be used inside a 'Figure'");
+    }
 
-export function PlotList() {
-    const listStyle = {
-        display: "flex",
-        flexDirection: "row",
-    };
+    const pad = props.pad ?? 0;
 
-    <div className="plotList" style={listStyle}>
+    const { ref, width = 1 } = props.maxWidth ?
+        { ref: undefined, width: props.maxWidth } : useElementSize<HTMLDivElement>();
+
+    const xaxis = fig.axes.get(props.xaxis)!;
+    const yaxis = fig.axes.get(props.yaxis)!;
+
+    const child_plots = React.Children.toArray(props.children).filter(isPlot);
+    const n_plots = child_plots.length;
+    const child_props = child_plots.map((child) => child.props);
+
+    let n_cols = 0;
+    let space = width;
+
+    for (let i = 0; i < n_plots; i++) {
+        const xaxis_pos = child_props[i].xaxis_pos ?? 'bottom';
+        const yaxis_pos = child_props[i].yaxis_pos ?? 'left';
+        const show_yaxis = child_props[i].show_yaxis ?? (
+            yaxis.show == "one" ? i == (yaxis_pos == 'left' ? 0 : -1) : yaxis.show
+        );
+
+        const plotWidth = calc_plot_dims(fig, xaxis, yaxis, false, show_yaxis, xaxis_pos, yaxis_pos).totalWidth;
+
+        space -= plotWidth + (i > 0 ? pad : 0);
+
+        if (space < 0) break;
+        n_cols += 1;
+    }
+
+    n_cols = Math.max(n_cols, 1);
+    const n_rows = Math.ceil(n_plots / n_cols);
+
+    return <div ref={ref as React.RefObject<HTMLDivElement> | undefined}>
+        <PlotGrid ncols={n_cols} nrows={n_rows} xaxes={props.xaxis} yaxes={props.yaxis} pad={props.pad} zoomExtent={props.zoomExtent}>{props.children}</PlotGrid>
     </div>
 }
-*/
-
-/*
-
-PlotGrid, PlotList
-
-Zoomer contains many plots, it attaches to each one
-Each plot has an associated xscale and a yscale
-
-on zoom, an event is tracked to a given x and y axis, which are updated
-
-
-*/
 
 interface PlotImageProps {
     data: NArray | null
@@ -499,7 +550,7 @@ interface PlotImageProps {
     ylim?: [number, number] // [min, max]
 }
 
-export function PlotImage(props: PlotImageProps) {
+export const PlotImage = React.memo(function (props: PlotImageProps) {
     const fig = React.useContext(FigureContext);
     const plot = React.useContext(PlotContext);
     if (fig === undefined || plot === undefined) {
@@ -589,7 +640,7 @@ export function PlotImage(props: PlotImageProps) {
         <canvas width={width} height={height} ref={canvasRef} style={{imageRendering: "pixelated"}}></canvas>
     </foreignObject>
     </g>;
-}
+});
 
 interface PlotLineProps extends React.SVGProps<SVGPathElement> {
     xs: Array<number>
@@ -602,8 +653,6 @@ export function PlotLine(props: PlotLineProps) {
     if (fig === undefined || plot === undefined) {
         throw new Error("Component 'PlotLineProps' must be used inside a 'Plot'");
     }
-
-    console.log(`xs length: ${props.xs.length}`);
 
     let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
     let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
@@ -636,5 +685,5 @@ export function PlotLine(props: PlotLineProps) {
         filteredProps[prop] = props[prop]
     }
 
-    return <path d={path_elems.join(" ")} className="plot-line" {...filteredProps}/>;
+    return <path d={path_elems.join(" ")} className={styles["plot-line"]} {...filteredProps}/>;
 }

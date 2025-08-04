@@ -1,4 +1,6 @@
+import { Collapse, Title } from '@mantine/core';
 import React from 'react';
+import { useDisclosure } from '@mantine/hooks';
 
 export interface BoxProps {
     crossAlign?: 'center' | 'start' | 'end' | 'stretch'; // = 'center'
@@ -6,27 +8,27 @@ export interface BoxProps {
     children?: React.ReactNode;
 }
 
-export function HBox(props: BoxProps) {
+export const HBox = React.forwardRef<HTMLDivElement, BoxProps>(function HBox(props, ref) {
     const style = {
         flexDirection: 'row',
         alignItems: props.crossAlign ?? 'center',
     } as const;
 
-    return <div className="hbox" style={style}>
+    return <div className="hbox" style={style} ref={ref}>
         { props.children }
     </div>;
-}
+});
 
-export function VBox(props: BoxProps) {
+export const VBox = React.forwardRef<HTMLDivElement, BoxProps>(function (props, ref) {
     const style = {
         flexDirection: 'column',
         alignItems: props.crossAlign ?? 'center',
     } as const;
 
-    return <div className="vbox" style={style}>
+    return <div className="vbox" style={style} ref={ref}>
         { props.children }
     </div>;
-}
+});
 
 interface SectionProps {
     name: string
@@ -34,15 +36,10 @@ interface SectionProps {
 }
 
 export function Section(props: SectionProps) {
-    const [collapsed, setCollapsed] = React.useState(false);
-
-    function toggle(e: React.MouseEvent) {
-        e.stopPropagation();
-        setCollapsed(!collapsed);
-    }
+    const [opened, {toggle}] = useDisclosure(true);
 
     return <>
-        <div className="section-header" onClick={toggle}>{ props.name }</div>
-        <div className={ "section" + (collapsed ? " collapsed" : "") }>{ props.children }</div>
+        <div className="section-header" onClick={toggle}><Title order={3}>{ props.name }</Title></div>
+        <Collapse className="section" in={opened}>{ props.children }</Collapse>
     </>;
 }

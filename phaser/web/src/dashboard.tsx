@@ -1,35 +1,22 @@
 
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { atom, PrimitiveAtom, useAtom, useAtomValue, createStore, Provider } from 'jotai';
+import { atom, PrimitiveAtom, useAtom, useAtomValue, Provider, useStore } from 'jotai';
 
-
+import '@mantine/core/styles.css';
+import { AppShell, Container, createTheme, MantineProvider } from '@mantine/core';
 import { np_fut, np } from './wasm-array';
-import { JobStatus, JobUpdate, DashboardMessage, LogRecord, LogsData, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
-import { Section } from './components';
-import { ProbePlot, ObjectPlot, ProgressPlot } from './plots';
 import { IArrayInterchange } from 'wasm-array';
 
-let socket: WebSocket | null = null;
-const statusState: PrimitiveAtom<JobStatus | null> = atom(null as JobStatus | null);
-const probeState: PrimitiveAtom<ProbeData | null> = atom(null as ProbeData | null);
-const objectState: PrimitiveAtom<ObjectData | null> = atom(null as ObjectData | null);
-const progressState: PrimitiveAtom<ProgressData | null> = atom(null as ProgressData | null);
-const logsState: PrimitiveAtom<Array<LogRecord>> = atom([] as Array<LogRecord>);
-const store = createStore();
+import '../static/styles.css';
+import { JobStatus, DashboardMessage, LogRecord, LogsData, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
+import { Section } from './components';
+import { ProbePlot, ObjectPlot, ProgressPlot } from './plots';
+import Header from './header';
+import websocket from './websocket';
 
-function StatusBar(props: {}) {
-    let status = useAtomValue(statusState) ?? "Disconnected";
-
-    const title_case = (s: string) => s[0].toUpperCase() + s.substring(1).toLowerCase();
-
-    return <h2>
-        Status: {title_case(status)}
-    </h2>;
-}
-
-function Logs(props: {}) {
-    const [logs, setLogs] = useAtom(logsState);
+function Logs({state}: {state: PrimitiveAtom<Array<LogRecord>>}) {
+    const [logs, setLogs] = useAtom(state);
     const ref = React.useRef<HTMLDivElement | null>(null);
 
     const handleNewLogs = (data: LogsData) => {
@@ -59,45 +46,35 @@ function Logs(props: {}) {
     </div>
 }
 
-const root = createRoot(document.getElementById('app')!);
-root.render(
-    <StrictMode>
-        <Provider store={store}>
-            <StatusBar/>
-            <Section name="Progress"><ProgressPlot state={progressState}/></Section>
-            <Section name="Probe"><ProbePlot state={probeState}/></Section>
-            <Section name="Object"><ObjectPlot state={objectState}/></Section>
-            <Section name="Logs"><Logs/></Section>
-        </Provider>
-    </StrictMode>
-);
+function App(props: {}) {
+    const store = useStore();
 
-async function getLogs(before?: number): Promise<LogsData> {
-    const params = new URLSearchParams();
-    if (before) {
-        params.set("before", before.toString());
+    const statusState: PrimitiveAtom<JobStatus | null> = atom(null as JobStatus | null);
+    const probeState: PrimitiveAtom<ProbeData | null> = atom(null as ProbeData | null);
+    const objectState: PrimitiveAtom<ObjectData | null> = atom(null as ObjectData | null);
+    const progressState: PrimitiveAtom<ProgressData | null> = atom(null as ProgressData | null);
+    const logsState: PrimitiveAtom<Array<LogRecord>> = atom([] as Array<LogRecord>);
+
+    async function updateState(raw_state: Record<string, any>) {
+        await np_fut;
+        const state = (await decodeState(raw_state)) as PartialReconsData;
+        console.log(`state: ${JSON.stringify(state)}`);
+
+        if (state.probe) {
+            const probe = state.probe;
+            store.set(probeState, (_: any) => probe);
+        }
+        if (state.object) {
+            const object = state.object;
+            store.set(objectState, (_: any) => object);
+        }
+        if (state.progress) {
+            const progress = state.progress;
+            store.set(progressState, (_: any) => progress);
+        }
     }
-    const response = await fetch(document.URL + '/logs?' + params);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch logs: ${response.status} ${response.statusText}`);
-    }
-    return await response.json() as LogsData;
-}
 
-addEventListener("DOMContentLoaded", (event) => {
-    const protocol = window.location.protocol == 'https:' ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}${window.location.pathname}/listen`);
-    socket.binaryType = "arraybuffer";
-
-    socket.addEventListener("open", (event) => {
-        console.log("Socket connected");
-    });
-
-    socket.addEventListener("error", (event) => {
-        console.log("Socket error: ", event);
-    });
-
-    socket.addEventListener("message", (event) => {
+    function onMessage(event: MessageEvent<any>) {
         let text: string;
         if (event.data instanceof ArrayBuffer) {
             let utf8decoder = new TextDecoder();
@@ -123,12 +100,52 @@ addEventListener("DOMContentLoaded", (event) => {
         } else {
             console.warn(`Unknown message type: ${data}`);
         }
+    };
+
+    const protocol = window.location.protocol == 'https:' ? "wss:" : "ws:";
+    const { status, lastSeen } = websocket({
+        address: `${protocol}//${window.location.host}${window.location.pathname}/listen`,
+        onMessage,
     });
 
-    socket.addEventListener("close", (event) => {
-        console.log("Socket disconnected");
-    });
+    return <Provider store={store}>
+        <AppShell header={{ height: 80 }} padding="md">
+            <AppShell.Header><Header serverStatus={status}/></AppShell.Header>
+            <AppShell.Main><Container size="lg">
+                <Section name="Progress"><ProgressPlot state={progressState}/></Section>
+                <Section name="Probe"><ProbePlot state={probeState}/></Section>
+                <Section name="Object"><ObjectPlot state={objectState}/></Section>
+                <Section name="Logs"><Logs state={logsState}/></Section>
+            </Container></AppShell.Main>
+            {/*<StatusBar state={statusState}/>*/}
+        </AppShell>
+    </Provider>
+}
+
+const theme = createTheme({
+
 });
+
+const root = createRoot(document.getElementById('app')!);
+root.render(
+    <StrictMode>
+        <MantineProvider theme={theme}>
+            <App/>
+        </MantineProvider>
+    </StrictMode>
+);
+
+async function getLogs(before?: number): Promise<LogsData> {
+    const params = new URLSearchParams();
+    if (before) {
+        params.set("before", before.toString());
+    }
+    const response = await fetch(document.URL + '/logs?' + params);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch logs: ${response.status} ${response.statusText}`);
+    }
+    return await response.json() as LogsData;
+}
 
 async function decodeState(state: Record<any, any>): Promise<any> {
     if (state._ty !== undefined) {
@@ -145,21 +162,3 @@ async function decodeState(state: Record<any, any>): Promise<any> {
     return out;
 }
 
-async function updateState(raw_state: Record<string, any>) {
-    await np_fut;
-    const state = (await decodeState(raw_state)) as PartialReconsData;
-    console.log(`state: ${JSON.stringify(state)}`);
-
-    if (state.probe) {
-        const probe = state.probe;
-        store.set(probeState, (_: any) => probe);
-    }
-    if (state.object) {
-        const object = state.object;
-        store.set(objectState, (_: any) => object);
-    }
-    if (state.progress) {
-        const progress = state.progress;
-        store.set(progressState, (_: any) => progress);
-    }
-}

@@ -11,6 +11,7 @@ from pane.util import pluralize, list_phrase
 from typing_extensions import Self
 
 if t.TYPE_CHECKING:
+    from phaser.state import ReconsState
     from phaser.hooks.schedule import FlagArgs, FlagLike, ScheduleLike
 
 T = t.TypeVar('T')
@@ -81,8 +82,10 @@ ReconsVars: t.TypeAlias = t.Annotated[t.FrozenSet[ReconsVar], _ReconsVarsAnnotat
 EmptyDict: t.TypeAlias = t.Annotated[t.Dict[t.NoReturn, t.NoReturn], _EmptyDictAnnotation()]
 
 
-class Cancelled(BaseException):
-    ...
+class EarlyTermination(BaseException):
+    def __init__(self, state: 'ReconsState', continue_next_engine: bool = False):
+        self.state: 'ReconsState' = state
+        self.continue_next_engine: bool = continue_next_engine
 
 
 class Dataclass(pane.PaneBase, kw_only=True, allow_extra=False):

@@ -1,6 +1,8 @@
 from __future__ import annotations
+import abc
 import asyncio
 from collections import deque
+import datetime
 import logging
 from pathlib import Path
 import random
@@ -55,22 +57,40 @@ class Subscribable(t.Generic[T]):
             await subscriber.put(msg)
 
 
-class Worker(Subscribable[WorkerUpdate]):
+class Worker(Subscribable[WorkerUpdate], abc.ABC):
     def __init__(self, worker_id: WorkerID):
         super().__init__()
         self.status: WorkerStatus = 'queued'
         self.id: WorkerID = worker_id
 
         self.current_job: t.Optional[weakref.ref[Job]] = None
+        self.start_time: t.Optional[datetime.datetime] = None
+        """UTC time worker started running at"""
+        self.hostname: t.Optional[str] = None
+        """Hostname worker is running on"""
+        self.backends: t.Optional[t.Dict[str, t.Tuple[str, ...]]] = None
+        """Computational backends available to worker"""
+
+    @abc.abstractmethod
+    def worker_type(self) -> str:
+        ...
 
     def state(self) -> WorkerState:
-        return WorkerState(self.id, self.status, {
+        links = {
             'shutdown': url_for('shutdown_worker', worker_id=self.id),
             'reload': url_for('reload_worker', worker_id=self.id),
-        })
+        }
+        current_job = job.id if self.current_job and (job := self.current_job()) else None
+        return WorkerState(
+            self.id, self.worker_type(), self.status, links=links,
+            current_job=current_job, start_time=self.start_time,
+            hostname=self.hostname, backends=self.backends,
+        )
 
     async def cancel(self):
-        if self.status not in ('stopping', 'stopped'):
+        if self.status == 'queued':
+            await self.set_status('stopped')
+        elif self.status not in ('stopping', 'stopped'):
             await self.set_status('stopping')
 
     async def reload(self):
@@ -99,6 +119,9 @@ class Worker(Subscribable[WorkerUpdate]):
             return OkResponse()
 
         if msg.msg == 'connect':
+            self.start_time = datetime.datetime.now(datetime.timezone.utc)
+            self.hostname = 'localhost' if self.worker_type() == 'local' else msg.hostname
+            self.backends = msg.backends
             await self.set_status('idle')
 
         if (job_id := getattr(msg, 'job_id', None)):
@@ -117,6 +140,7 @@ class Worker(Subscribable[WorkerUpdate]):
                 job = server.job_queue.popleft()
                 self.current_job = weakref.ref(job)
                 await self.set_status('running')
+                job.start_time = datetime.datetime.now(datetime.timezone.utc)
                 await job.set_status('starting')
                 return JobResponse(job.id, job.plan)
             else:
@@ -138,6 +162,9 @@ class LocalWorker(Worker):
 
         self._start()
         self._fut: asyncio.Task[None] = asyncio.create_task(asyncio.to_thread(self._watch_process))
+
+    def worker_type(self) -> str:
+        return 'local'
 
     def _start(self):
         from phaser.web.worker import run_worker
@@ -168,9 +195,12 @@ class LocalWorker(Worker):
 
 class ManualWorker(Worker):
     def __init__(self, worker_id: WorkerID):
-        url = server.get_worker_url(worker_id)
-        logging.warning(f"Worker command: python -m phaser worker {url}")
+        self.url = server.get_worker_url(worker_id)
+        logging.warning(f"Worker command: python -m phaser worker {self.url}")
         super().__init__(worker_id)
+
+    def worker_type(self) -> str:
+        return 'manual'
 
 
 class Workers(Subscribable[WorkersUpdate]):
@@ -240,15 +270,19 @@ class Workers(Subscribable[WorkersUpdate]):
 
 
 class Job(Subscribable[JobMessage]):
-    def __init__(self, id: JobID, plan: str):
+    def __init__(self, id: JobID, plan: str, name: t.Optional[str] = None):
         super().__init__()
         self.id: JobID = id
         self.plan: str = plan
+        self.job_name: t.Optional[str] = name
+        """Name of job"""
         self.status: JobStatus = 'queued'
-        # cached job state
         self.cache: t.Dict[str, t.Any] = {}
-        # and log messages
+        """Cache of job state"""
         self.logs: t.List[LogRecord] = []
+        """Cache of recorded messages"""
+        self.start_time: t.Optional[datetime.datetime] = None
+        """Time job was started at"""
 
     @classmethod
     async def from_path(cls, path: t.Union[str, Path]) -> t.List[Self]:
@@ -281,8 +315,8 @@ class Job(Subscribable[JobMessage]):
 
         assert result['result'] == 'success'
         jobs = [
-            cls(server.make_jobid(), json.dumps(plan))
-            for plan in result['plans']
+            cls(server.make_jobid(), json.dumps(plan), name)
+            for (name, plan) in result['plans']
         ]
         for job in jobs:
             await server.jobs.add(job)
@@ -313,13 +347,16 @@ class Job(Subscribable[JobMessage]):
         await server.jobs.remove(self.id)
 
     def state(self, full: bool = False) -> JobState:
-        state = self.cache if full else {}
-        return JobState.make_unchecked(self.id, self.status, {
+        state = self.cache if full else {k: v for (k, v) in self.cache.items() if k == 'iter'}
+        links = {
             'dashboard': url_for('job_dashboard', job_id=self.id),
             'cancel': url_for('cancel_job', job_id=self.id), 
             'delete': url_for('delete_job', job_id=self.id), 
             'logs': url_for('job_logs', job_id=self.id),
-        }, state=state)
+        }
+        return JobState.make_unchecked(
+            self.id, self.status, links, job_name=self.job_name, start_time=self.start_time, state=state,
+        )
 
     async def handle_update(self, msg: WorkerMessage):
         if msg.msg == 'job_update':
@@ -357,8 +394,11 @@ class Jobs(Subscribable[JobsUpdate]):
         return [job.state() for job in self.inner.values()]
 
     async def _subscribe_to_job(self, job: Job):
+        total_iter = job.cache.get('iter', {}).get('total_iter', None)
         async for msg in job.subscribe():
-            if msg.msg in ('status_change', 'job_stopped'):
+            # update if status changed or iteration # changed
+            if (new_total_iter := job.cache.get('iter', {}).get('total_iter', None)) != total_iter or msg.msg in ('status_change', 'job_stopped'):
+                total_iter = new_total_iter
                 await self.message_subscribers(
                     JobsUpdate.make_unchecked(msg, self.state())
                 )

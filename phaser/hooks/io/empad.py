@@ -26,7 +26,8 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
 
         voltage = props.kv * 1e3 if props.kv is not None else meta.voltage
         diff_step = props.diff_step or meta.diff_step
-        scan_shape = meta.scan_shape
+        # [x, y] -> [y, x]
+        scan_shape = t.cast(t.Tuple[int, int], tuple(reversed(meta.scan_shape)))
         adu = props.adu or meta.adu
         needs_scale = not meta.is_simulated()
 
@@ -39,9 +40,10 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         scan_hook = {
             'type': 'raster',
             # [x, y] -> [y, x]
-            'shape': tuple(reversed(meta.scan_shape)),
+            'shape': scan_shape,
             'step_size': tuple(s*1e10 for s in reversed(meta.scan_step)),  # m to A
             'affine': meta.scan_correction[::-1, ::-1] if meta.scan_correction is not None else None,
+            'rotation': meta.scan_rotation,
         }
 
         #TODO: add tilt to metafile

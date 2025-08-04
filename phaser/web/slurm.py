@@ -49,6 +49,9 @@ class SlurmWorker(Worker):
         self.slurm_job_id: SlurmID = slurm_job_id
         super().__init__(worker_id)
 
+    def worker_type(self) -> str:
+        return 'slurm'
+
     async def cancel(self):
         from .server import server
         if self.status == 'queued':

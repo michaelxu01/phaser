@@ -155,7 +155,8 @@ def lsqml_dry_run(
 
         return (probe_mag, psi)
 
-    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props,
+                             sim.state.tilt[tuple(group)] if sim.state.tilt is not None else None)
     (probe_mag, psi) = slice_forwards(props, (probe_mag, psi), run_slice)
 
     # modeled and experimental intensity
@@ -220,7 +221,8 @@ def lsqml_run(
 
         return (group_probe_mag, psi)
 
-    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props,
+                             sim.state.tilt[tuple(group)] if sim.state.tilt is not None else None)
     (group_probe_mag, psi) = slice_forwards(props, (group_probe_mag, psi), sim_slice)
 
     new_obj_mag += group_obj_mag
@@ -398,7 +400,8 @@ def epie_dry_run(
 
         return psi
 
-    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props,
+                             sim.state.tilt[tuple(group)] if sim.state.tilt is not None else None)
     psi = slice_forwards(props, psi, run_slice)
 
     # modeled and experimental intensity
@@ -439,7 +442,8 @@ def epie_run(
 
         return psi
 
-    props = tilt_propagators(sim.ky, sim.kx, sim.state, props, sim.state.tilt[tuple(group)])
+    props = tilt_propagators(sim.ky, sim.kx, sim.state, props,
+                             sim.state.tilt[tuple(group)] if sim.state.tilt is not None else None)
     psi = slice_forwards(props, psi, sim_slice)
 
     model_wave = fft2(psi[-1] * group_obj[:, -1, None])

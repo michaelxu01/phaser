@@ -1,100 +1,125 @@
 import dataclasses
+import itertools
 import logging
-import time
 import typing as t
 
 import numpy
 import pane
 
-from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype
+from phaser.types import EarlyTermination
+from phaser.utils.num import cast_array_module, get_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype
 from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
-from .hooks import Hook, ObjectHook, RawData
+from .hooks import EngineHook, Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
-from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState
+from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState, PreparedRecons
+from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
 
 
-class Observer:
-    def __init__(self):
-        self.solver_start_time: t.Optional[float] = None
-        self.iter_start_time: t.Optional[float] = None
-        self.engine_i: int = 0
-        self.start_iter: int = 0
+def execute_plan(
+    plan: ReconsPlan, *, xp: t.Any = None, seed: t.Any = None,
+    name: t.Optional[str] = None,
+    init_state: t.Union[ReconsState, PartialReconsState, None] = None,
+    observers: t.Union[Observer, t.Iterable[Observer], None] = None,
+    override_observers: t.Union[Observer, t.Iterable[Observer], None] = None,
+):
+    recons = initialize_reconstruction(
+        plan, xp=xp, seed=seed, name=name, init_state=init_state,
+        observers=observers, override_observers=override_observers
+    )
+    recons.state.iter.n_total_iters = sum(
+        t.cast(EnginePlan, engine.props).niter
+        for engine in plan.engines
+    )
 
-    def _format_hhmmss(self, seconds: float) -> str:
-        hh, ss = divmod(seconds, (60 * 60))
-        mm, ss = divmod(ss, 60)
-        return f"{int(hh):02d}:{int(mm):02d}:{ss:06.3f}"
-
-    def _format_mmss(self, seconds: float) -> str:
-        mm, ss = divmod(seconds, 60)
-        return f"{int(mm):02d}:{ss:06.3f}"
-
-    def init_solver(self, init_state: ReconsState, engine_i: int):
-        self.engine_i = engine_i
-        self.start_iter = init_state.iter.total_iter
-
-        init_state.iter = IterState(self.engine_i, 1, self.start_iter + 1)
-
-    def start_solver(self):
-        logging.info("Engine initialized")
-        self.iter_start_time = self.solver_start_time = time.monotonic()
-
-    def heartbeat(self):
-        pass
-
-    def update_group(self, state: t.Union[ReconsState, PartialReconsState], force: bool = False):
-        pass
-
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
-        finish_time = time.monotonic()
-
-        if self.iter_start_time is not None:
-            delta = finish_time - self.iter_start_time
-            time_s = f" [{self._format_mmss(delta)}]"
-        else:
-            time_s = ""
-
-        w = len(str(n))
-
-        error_s = f" Error: {error:.3e}" if error is not None else ""
-        logging.info(f"Finished iter {i:{w}}/{n}{time_s}{error_s}")
-
-        state.iter = IterState(self.engine_i, i + 1, self.start_iter + i + 1)
-        self.iter_start_time = finish_time
-
-    def finish_solver(self):
-        logging.info("Solver finished!")
-        if self.solver_start_time is not None:
-            finish_time = time.monotonic()
-            delta = finish_time - self.solver_start_time
-            logging.info(f"Total time: {self._format_hhmmss(delta)}")
+    try:
+        try:
+            for engine in plan.engines:
+                recons = execute_engine(recons, engine)
+        except EarlyTermination as e:
+            recons.state = e.state
+        recons.observer.finish_recons(recons.state)
+        logging.info("Reconstruction finished!")
+    finally:
+        recons.observer.close()
 
 
-def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
-    xp = get_backend_module(plan.backend)
+def execute_engine(
+    recons: PreparedRecons,
+    engine: EngineHook,
+) -> PreparedRecons:
+    xp = get_array_module(recons.state.object.data, recons.state.probe.data)
+    dtype = recons.patterns.patterns.dtype
+    plan = t.cast(EnginePlan, engine.props)
 
-    if observer is None:
-        observer = Observer()
+    engine_i = recons.state.iter.engine_num
 
-    patterns, state = initialize_reconstruction(plan, xp)
-    dtype = patterns.patterns.dtype
+    if plan.early_termination:
+        engine_observer = ObserverSet((recons.observer, PatienceObserver(
+            plan.early_termination, plan.early_termination_smoothing
+        )))
+    else:
+        engine_observer = recons.observer
 
-    for (engine_i, engine) in enumerate(plan.engines):
-        logging.info(f"Preparing for engine #{engine_i + 1}...")
-        patterns, state = prepare_for_engine(patterns, state, xp, t.cast(EnginePlan, engine.props))
-        state = engine({
-            'data': patterns,
-            'state': state,
+    logging.info(f"Preparing for engine #{engine_i + 1}...")
+    recons.patterns, recons.state = prepare_for_engine(recons.patterns, recons.state, xp, plan)
+    recons.state.iter = IterState(
+        engine_num=engine_i + 1,
+        engine_iter=0,
+        n_engine_iters=plan.niter,
+        total_iter=recons.state.iter.total_iter,
+        n_total_iters=recons.state.iter.n_total_iters,
+    )
+    try:
+        recons.state = engine({
+            'data': recons.patterns,
+            'state': recons.state,
             'dtype': dtype,
             'xp': xp,
-            'recons_name': plan.name,
-            'engine_i': engine_i,
-            'observer': observer,
+            'recons_name': recons.name,
+            'observer': engine_observer,
             'seed': None,
         })
+    except EarlyTermination as e:
+        recons.state = e.state
+        engine_observer.finish_engine(recons.state)
 
-    logging.info("Reconstruction finished!")
+        if not e.continue_next_engine:
+            engine_observer.finish_recons(recons.state)
+            raise
+
+    return recons
+
+
+def _normalize_observers(
+    observers: t.Union[Observer, t.Iterable[Observer], None],
+    override_observers: t.Union[Observer, t.Iterable[Observer], None],
+) -> ObserverSet:
+    if override_observers is not None:
+        if observers is not None:
+            raise TypeError("Cannot specify both 'observers' and 'override_observers")
+        if isinstance(override_observers, Observer):
+            obs = (override_observers,)
+        elif isinstance(override_observers, t.Iterable):
+            obs = tuple(override_observers)
+        else:
+            raise TypeError(f"'override_observers' expected an Observer or list of Observers, instead got type {type(override_observers)}")
+
+        return ObserverSet(obs)
+
+    obs = [
+        SaveObserver(),
+        LoggingObserver(),
+    ]
+
+    if isinstance(observers, Observer):
+        obs.append(observers)
+    elif isinstance(observers, t.Iterable):
+        obs.extend(observers)
+    elif observers is not None:
+        raise TypeError(f"'observers' expected an Observer or list of Observers, instead got type {type(observers)}")
+
+    return ObserverSet(obs)
 
 
 def load_raw_data(
@@ -133,8 +158,6 @@ def load_raw_data(
 
     if raw_data['scan_hook'] is None and init_state.scan is None:
         raise ValueError("`scan` must be specified by raw data, previous state, or manually in `init.scan`")
-    if raw_data['tilt_hook'] is None and init_state.tilt is None:
-        raw_data['tilt_hook'] = {'type': 'global', 'tilt': [0., 0.]}
     if raw_data['probe_hook'] is None and init_state.probe is None:
         raise ValueError("`probe` must be specified by raw data, previous state, or manually in `init.probe`")
     if raw_data['scan_hook'] == {}:
@@ -165,14 +188,18 @@ def load_raw_data(
 
 
 def initialize_reconstruction(
-    plan: ReconsPlan, xp: t.Any, seed: t.Any = None,
-    init_state: t.Union[ReconsState, PartialReconsState, None] = None
-) -> t.Tuple[Patterns, ReconsState]:
-    xp = cast_array_module(xp)
+    plan: ReconsPlan, *, xp: t.Any = None, seed: t.Any = None,
+    name: t.Optional[str] = None,
+    init_state: t.Union[ReconsState, PartialReconsState, None] = None,
+    observers: t.Union[Observer, t.Iterable[Observer], None] = None,
+    override_observers: t.Union[Observer, t.Iterable[Observer], None] = None,
+) -> PreparedRecons:
+    xp = cast_array_module(get_backend_module(plan.backend) if xp is None else xp)
+    observer = _normalize_observers(observers, override_observers)
 
     logging.basicConfig(level=logging.INFO)
-
     logging.info("Executing plan...")
+    observer.init_recons(plan)
 
     dtype: t.Type[numpy.floating] = numpy.float32 if plan.dtype == 'float32' else numpy.float64
     cdtype: t.Type[numpy.complexfloating] = to_complex_dtype(dtype)
@@ -232,12 +259,14 @@ def initialize_reconstruction(
     if init_state.tilt is not None and plan.init.tilt is None:
         logging.info("Re-using tilt from initial state...")
         tilt = init_state.tilt
-    else:
+    elif tilt_hook is not None:
         logging.info("Initializing tilt...")
         tilt = pane.from_data(tilt_hook, TiltHook)(  # type: ignore
             {'dtype': dtype, 'xp': xp, 'shape': scan.shape[:-1]}
         )
-    
+    else:
+        tilt = None
+
     obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
     obj_sampling = ObjectSampling.from_scan(
         scan, sampling.sampling, sampling.extent / 2. + obj_pad_px * sampling.sampling
@@ -295,7 +324,12 @@ def initialize_reconstruction(
             "For simulated data, use the 'scale' or 'poisson' preprocessing"
         )
 
-    return (data, state)
+    observer.start_recons(state)
+    return PreparedRecons(
+        data, state,
+        name or plan.name,
+        observer
+    )
 
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
@@ -360,6 +394,12 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)
         state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
 
+    if isinstance(engine, GradientEnginePlan):
+        solver_vars = set(itertools.chain.from_iterable(engine.solvers.keys()))
+        if 'tilt' in solver_vars and state.tilt is None:
+            logging.info("Creating new, zeroed tilt map...")
+            state.tilt = xp.zeros_like(state.scan)
+
     return patterns, state
 
 
@@ -391,3 +431,10 @@ def merge(left: t.Any, right: t.Any) -> t.Any:
         return {k: merge(left_d.get(k, _MISSING), right_d.get(k, _MISSING)) for k in keys}
 
     return left if right is _MISSING else right
+
+
+__all__ = [
+    'execute_plan', 'execute_engine',
+    'initialize_reconstruction',
+    'prepare_for_engine'
+]

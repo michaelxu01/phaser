@@ -1,8 +1,7 @@
 import React from 'react';
 import { useAtomValue } from 'jotai';
 
-import { PlotScale } from './scale';
-import { FigureContext, PlotContext } from './plot';
+import { FigureContext, PlotContext, styles } from './plot';
 import { Transform1D } from './transform';
 
 const prefixes: Map<number, string> = new Map([
@@ -76,7 +75,7 @@ export default function Scalebar(props: ScalebarProps) {
         const [engOrder, rem] = divmod(orderOfMagnitude, 3);
         const prefix = prefixes.get(3 * engOrder);
         if (prefix === undefined) {
-            return <g className="scalebar"/>;
+            return <g className={styles["scalebar"]}/>;
         }
 
         const mult = Math.pow(10, rem);
@@ -99,7 +98,7 @@ export default function Scalebar(props: ScalebarProps) {
     const y = yaxis.scale.rangeFromUnit(1.0) - margin - height;
     const textX = scale.rangeFromUnit(1.0) - margin;
 
-    return <g className='scalebar'>
+    return <g className={styles['scalebar']}>
         <rect rx={radius} height={height} x={x} y={y} width={width} />
         <text x={textX} y={y} dx={-5} dy={-margin} textAnchor="end">{currentText}</text>
     </g>

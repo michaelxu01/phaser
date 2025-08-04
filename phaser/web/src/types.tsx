@@ -6,8 +6,13 @@ export type Result = "finished" | "errored" | "cancelled" | "interrupted";
 
 export interface WorkerState {
     worker_id: string;
+    worker_type: string;
     status: WorkerStatus;
     links: Record<string, string>;
+    current_job: string | null;
+    start_time: string | null;
+    hostname: string | null;
+    backends: Record<string, Array<string>> | null;
 }
 
 export interface WorkerUpdate {
@@ -20,10 +25,10 @@ export interface WorkerUpdate {
 export interface JobState {
     job_id: string;
     status: JobStatus;
+    job_name: string | null;
     links: Record<string, string>;
-
+    start_time: string | null;
     state: PartialReconsData;
-    worker_id: string | null;
 };
 
 export interface JobStatusChange {
@@ -118,6 +123,8 @@ export interface IterData {
     engine_num: number;
     engine_iter: number;
     total_iter: number;
+    n_engine_iters: number | null;
+    n_total_iters: number | null;
 }
 
 export interface Sampling {
