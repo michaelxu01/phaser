@@ -1,5 +1,5 @@
 import dataclasses
-from functools import wraps
+import functools
 import typing as t
 
 import numpy
@@ -117,6 +117,21 @@ def map(
     return jax.tree.map(f, tree, *rest, is_leaf=is_leaf)
 
 
+def reduce(
+    f: t.Callable[[T, t.Any], T], tree: Tree, initializer: T, *,
+    is_leaf: t.Optional[t.Callable[..., t.Any]] = None,
+) -> T:
+    return functools.reduce(f, leaves(tree, is_leaf=is_leaf), initializer)
+
+
+def sum(tree: Tree) -> numpy.ndarray:
+    from phaser.utils.num import get_array_module
+
+    xp = get_array_module(tree)
+    sums = map(xp.sum, tree)
+    return reduce(lambda lhs, rhs: lhs + rhs, sums, initializer=0)
+
+
 def map_with_path(
     f: t.Callable[..., t.Any],
     tree: Tree,
@@ -165,7 +180,7 @@ def value_and_grad(
         import jax  # type: ignore
         f = jax.value_and_grad(f, argnums, has_aux=has_aux)
 
-        @wraps(f)
+        @functools.wraps(f)
         def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
             (value, grad) = f(*args, **kwargs)
             # conjugate to get Wirtinger derivative, multiply by sign
@@ -180,7 +195,7 @@ def value_and_grad(
     import torch.func  # type: ignore
     f = torch.func.grad_and_value(f, argnums, has_aux=has_aux)
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
         # flip order of return values
         (grad, value) = f(*args, **kwargs)
@@ -301,6 +316,19 @@ def update_moment_per_elem_norm(updates: Tree, moments: Tree, decay: float, orde
 def bias_correction(moment: Tree, decay: float, count: t.Union[int, NDArray[numpy.integer]]) -> Tree:
     bias_correction = t.cast(NDArray[numpy.floating], 1 - decay**count)
     return map(lambda t: t / bias_correction.astype(t.dtype), moment)
+
+
+def scale(
+    scalar: t.Union[float, numpy.floating, NDArray[numpy.floating]],
+    tree: Tree
+) -> Tree:
+    return map(lambda x: scalar * x, tree)
+
+
+def squared_norm(
+    tree: Tree
+) -> NDArray[numpy.floating]:
+    return sum(map(lambda x: x**2, tree))
 
 
 @t.overload

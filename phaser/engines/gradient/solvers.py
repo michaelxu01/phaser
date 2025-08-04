@@ -109,11 +109,11 @@ class SGDSolver(ScheduledSolver):
             def factory(**kwargs: t.Any) -> GradientTransformation:
                 return chain(
                     trace(kwargs['momentum'], props.nesterov),
-                    scale_by_learning_rate(kwargs['learning_rate'], flip_sign=False),
+                    scale_by_learning_rate(kwargs['learning_rate']),
                 )
         else:
             def factory(**kwargs: t.Any) -> GradientTransformation:
-                return scale_by_learning_rate(kwargs['learning_rate'], flip_sign=False)
+                return scale_by_learning_rate(kwargs['learning_rate'])
 
         super().__init__('sgd', factory, hparams, args['params'])
 
@@ -135,18 +135,15 @@ class AdamSolver(ScheduledSolver):
 
 class PolyakSGDSolver(ScheduledSolver):
     def __init__(self, args: GradientSolverArgs, props: PolyakSGDSolverPlan):
-        raise NotImplementedError()
-
         hparams = {
             'max_learning_rate': props.max_learning_rate,
             'scaling': props.scaling,
         }
 
         def factory(**kwargs) -> GradientTransformation:
-            import optax
-            return optax.chain(
-                optax.scale_by_learning_rate(kwargs['scaling'], flip_sign=False),
-                optax.scale_by_polyak(
+            return chain(
+                scale_by_learning_rate(kwargs['scaling']),
+                scale_by_polyak(
                     max_learning_rate=kwargs['max_learning_rate'], f_min=props.f_min,
                     eps=props.eps, #variant='sps',
                 )
@@ -243,6 +240,7 @@ def scale_by_adam(
         mu = tree.update_moment(updates, state.mu, b1, 1)
         nu = tree.update_moment_per_elem_norm(updates, state.nu, b2, 2)
         n_inc = safe_increment(state.n)
+
         if nesterov:
             mu_hat = tree.map(
                 lambda m, g: b1 * m + (1 - b1) * g,
@@ -251,17 +249,42 @@ def scale_by_adam(
             )
         else:
             mu_hat = tree.bias_correction(mu, b1, n_inc)
-            nu_hat = tree.bias_correction(nu, b2, n_inc)
-            updates = tree.map(
-                lambda m, v: None if m is None else m / (xp.sqrt(v + eps_root) + eps),
-                mu_hat,
-                nu_hat,
-                is_leaf=lambda x: x is None,
-            )
-            mu = tree.cast(mu, mu_dtype)
+
+        nu_hat = tree.bias_correction(nu, b2, n_inc)
+        updates = tree.map(
+            lambda m, v: None if m is None else m / (xp.sqrt(v + eps_root) + eps),
+            mu_hat,
+            nu_hat,
+            is_leaf=lambda x: x is None,
+        )
+        mu = tree.cast(mu, mu_dtype)
         return updates, ScaleByAdamState(n=n_inc, mu=mu, nu=nu)
 
     return GradientTransformation(init_fn, update_fn)
+
+
+def scale_by_polyak(
+    f_min: float = 0.0,
+    max_learning_rate: float = 1.0,
+    eps: float = 0.0
+) -> GradientTransformation:
+    def update_fn(
+        updates: Updates, state: None, params: t.Any = None, *, value: float, **kwargs: t.Any
+    ):
+        del params
+        del kwargs
+        xp = get_array_module(updates)
+        grad_sq_norm = tree.squared_norm(updates)
+        gap = xp.array(value - f_min).astype(grad_sq_norm.dtype)
+        step = xp.where(
+            grad_sq_norm + eps <= xp.finfo(float).eps,
+            xp.array(0.0),
+            xp.minimum(gap / (grad_sq_norm + eps), max_learning_rate),
+        )
+        updates = tree.scale(step, updates)
+        return updates, state
+
+    return GradientTransformation(lambda params: None, update_fn)
 
 
 def safe_increment(n: NDArray[numpy.int32]) -> NDArray[numpy.int32]:
