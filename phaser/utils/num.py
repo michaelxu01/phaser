@@ -368,6 +368,17 @@ def debug_callback(callback: t.Callable[P, None], *args: P.args, **kwargs: P.kwa
         callback(*args, **kwargs)
 
 
+def assert_dtype(arr: numpy.ndarray, dtype: t.Type[numpy.generic]):
+    if is_torch(arr):
+        from ._torch_kernels import to_torch_dtype, to_numpy_dtype
+
+        if arr.dtype != to_torch_dtype(dtype):
+            raise TypeError(f"Expected array to be dtype {dtype}, got dtype {to_numpy_dtype(arr.dtype)} instead")
+    else:
+        if arr.dtype != dtype:
+            raise TypeError(f"Expected array to be dtype {dtype}, got dtype {arr.dtype} instead")
+
+
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {
     numpy.floating: numpy.complexfloating,
     numpy.float32: numpy.complex64,

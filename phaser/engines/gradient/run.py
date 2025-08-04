@@ -8,8 +8,8 @@ from typing_extensions import Self
 
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.num import (
-    get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_real_dtype
+    assert_dtype, get_array_module, cast_array_module, jit,
+    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
 )
 import phaser.utils.tree as tree
 from phaser.utils.optics import fourier_shift_filter
@@ -158,12 +158,15 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
     #jax.config.update('jax_traceback_filtering', 'off')
     xp = cast_array_module(args['xp'])
-    dtype = t.cast(t.Type[numpy.floating], args['dtype'])
+    dtype = args['dtype']
+    cdtype = to_complex_dtype(dtype)
     observer: Observer = args.get('observer', Observer())
     state = args['state']
     seed = args['seed']
     patterns = args['data'].patterns
     pattern_mask = xp.array(args['data'].pattern_mask)
+    assert_dtype(patterns, dtype)
+    assert_dtype(pattern_mask, dtype)
 
     noise_model = props.noise_model(None)
 
@@ -276,9 +279,13 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 state, iter_constraint_states[reg_i]
             )
 
+        assert_dtype(state.object.data, cdtype)
+        assert_dtype(state.probe.data, cdtype)
+
         if 'positions' in iter_vars:
             # check positions are at least overlapping object
             state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
+            assert_dtype(state.scan, dtype)
 
         state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
         state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])

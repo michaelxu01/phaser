@@ -174,7 +174,7 @@ class PostInitHook(Hook[PostInitArgs, t.Tuple['Patterns', 'ReconsState']]):
 class EngineArgs(t.TypedDict):
     data: 'Patterns'
     state: 'ReconsState'
-    dtype: DTypeLike
+    dtype: t.Type[numpy.floating]
     xp: t.Any
     recons_name: str
     observer: 'Observer'
