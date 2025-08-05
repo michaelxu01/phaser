@@ -10,7 +10,7 @@ from phaser.utils.object import ObjectSampling
 
 if t.TYPE_CHECKING:
     from phaser.utils.io import HdfLike
-    from phaser.utils.image import _BoundaryMode
+    from phaser.utils.image import _InterpBoundaryMode
     from phaser.observer import ObserverSet
 
 
@@ -68,7 +68,7 @@ class ProbeState():
         self, new_samp: Sampling,
         rotation: float = 0.0,
         order: int = 1,
-        mode: '_BoundaryMode' = 'grid-constant',
+        mode: '_InterpBoundaryMode' = 'grid-constant',
     ) -> Self:
         new_data = self.sampling.resample(
             self.data, new_samp,

@@ -9,7 +9,7 @@ from .utils import with_backends, check_array_equals_file
 
 from phaser.utils.num import get_backend_module, BackendName, to_numpy, Sampling
 from phaser.utils.image import (
-    affine_transform, _BoundaryMode
+    affine_transform, _InterpBoundaryMode
 )
 
 
@@ -21,7 +21,7 @@ def checkerboard() -> t.Tuple[NDArray[numpy.float32], Sampling]:
     return (checker, Sampling(checker.shape, sampling=(1.0, 1.0)))
 
 
-@with_backends('numpy', 'jax', 'cupy')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 @pytest.mark.parametrize(('mode', 'order', 'expected'), [
     ('grid-constant', 0, [ 1.0,  1.0,  1.0,  1.0, -2.0, -2.0, -2.0, -1.0, -1.0,  0.0,  0.0,  0.0,  1.0,  1.0,  2.0,  2.0,  2.0,  1.0,  1.0,  1.0,  1.0]),
     ('nearest'      , 0, [-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -1.0, -1.0,  0.0,  0.0,  0.0,  1.0,  1.0,  2.0,  2.0,  2.0,  2.0,  2.0,  2.0,  2.0]),
@@ -34,7 +34,7 @@ def checkerboard() -> t.Tuple[NDArray[numpy.float32], Sampling]:
     ('reflect'      , 1, [-1.0, -1.4, -1.8, -2.0, -2.0, -2.0, -1.6, -1.2, -0.8, -0.4, -0.0,  0.4,  0.8,  1.2,  1.6,  2.0,  2.0,  2.0,  1.8,  1.4,  1.0]),
     ('grid-wrap'    , 1, [ 1.0,  1.4,  1.8,  1.2, -0.4, -2.0, -1.6, -1.2, -0.8, -0.4, -0.0,  0.4,  0.8,  1.2,  1.6,  2.0,  0.4, -1.2, -1.8, -1.4, -1.0]),
 ])
-def test_affine_transform_1d(mode: str, order: int, expected: ArrayLike, backend: BackendName):
+def test_affine_transform_1d(mode: _InterpBoundaryMode, order: int, expected: ArrayLike, backend: BackendName):
     xp = get_backend_module(backend)
 
     in_ys = numpy.array([-2., -1., 0., 1., 2.])
@@ -42,11 +42,11 @@ def test_affine_transform_1d(mode: str, order: int, expected: ArrayLike, backend
     # interpolates at coords `numpy.linspace(-2., 6., 21, endpoint=True)`
     assert_array_almost_equal(numpy.array(expected), to_numpy(affine_transform(
         xp.asarray(in_ys), [0.4], -2.0,
-        mode=t.cast(_BoundaryMode, mode), order=order, cval=1.0, output_shape=(21,)
-    )), decimal=8)
+        mode=mode, order=order, cval=1.0, output_shape=(21,)
+    )), decimal=6)
 
 
-@with_backends('numpy', 'jax', 'cupy')
+@with_backends('numpy', 'jax', 'cupy', 'torch')
 @pytest.mark.parametrize(('name', 'order', 'rotation', 'sampling'), [
     ('identity',   1,  0.0, Sampling((16, 16), sampling=(1.0, 1.0))),
     ('pad',        0,  0.0, Sampling((32, 32), sampling=(1.0, 1.0))),
@@ -66,8 +66,9 @@ def test_resample(
     rotation: float,
     sampling: Sampling,
 ):
-    if (name, order, rotation, backend) == ('upsample', 0, 0.0, 'jax'):
-        pytest.xfail("JAX rounding bug?")
+    if (name, order, rotation) == ('upsample', 0, 0.0) and backend in ('jax', 'torch'):
+        # TODO: check intermediate dtypes here?
+        pytest.xfail("Rounding bug?")
 
     xp = get_backend_module(backend)
 

@@ -1,5 +1,6 @@
 import functools
 import itertools
+import operator
 from types import ModuleType
 import typing as t
 
@@ -8,6 +9,7 @@ from numpy.typing import ArrayLike
 import torch
 
 from phaser.utils.num import _PadMode
+from phaser.utils.image import _InterpBoundaryMode
 
 
 def get_cutouts(obj: torch.Tensor, start_idxs: torch.Tensor, cutout_shape: t.Tuple[int, int]) -> torch.Tensor:
@@ -73,6 +75,12 @@ class _MockTensor(torch.Tensor):
     #def dtype(self) -> t.Type[numpy.generic]:
     #    return to_numpy_dtype(super().dtype)
 
+    @property
+    def T(self) -> '_MockTensor': # pyright: ignore[reportIncompatibleVariableOverride]
+        if self.ndim == 2:
+            return _MockTensor(super().T)
+        return t.cast(_MockTensor, self.permute(*range(self.ndim - 1, -1, -1)))
+
     def astype(self, dtype: t.Union[str, torch.dtype, t.Type[numpy.generic]]) -> '_MockTensor':
         return t.cast(_MockTensor, self.to(to_torch_dtype(dtype)))
 
@@ -129,6 +137,18 @@ def to_numpy_dtype(dtype: t.Union[str, torch.dtype, numpy.dtype, t.Type[numpy.ge
         return _TORCH_TO_NUMPY_DTYPE[dtype]
     return dtype
 
+
+def _mirror(idx: torch.Tensor, size: int) -> torch.Tensor:
+    s = size -1
+    return torch.abs((idx + s) % (2 * s) - s)
+
+
+_BOUNDARY_FNS: t.Dict[str, t.Callable[[torch.Tensor, int], torch.Tensor]] = {
+    'nearest': lambda idx, size: torch.clip(idx, 0, size - 1),
+    'grid-wrap': lambda idx, size: idx % size,
+    'reflect': lambda idx, size: torch.floor_divide(_mirror(2*idx+1, 2*size+1), 2),
+    'mirror': _mirror,
+}
 
 _PAD_MODE_MAP: t.Dict[_PadMode, str] = {
     'constant': 'constant',
@@ -283,6 +303,121 @@ def asarray(
     requires_grad = arr.requires_grad if isinstance(arr, torch.Tensor) else False
 
     return _MockTensor(torch.asarray(arr, dtype=dtype, requires_grad=requires_grad, copy=copy))
+
+
+def affine_transform(
+    input: torch.Tensor, matrix: ArrayLike,
+    offset: t.Optional[ArrayLike] = None,
+    output_shape: t.Optional[t.Tuple[int, ...]] = None,
+    order: int = 1, mode: _InterpBoundaryMode = 'grid-constant',
+    cval: ArrayLike = 0.0,
+) -> torch.Tensor:
+
+    if output_shape is None:
+        output_shape = input.shape
+    n_axes = len(output_shape)  # num axes to transform over
+
+    idxs = t.cast(torch.Tensor, indices(output_shape, dtype=torch.float64))
+
+    matrix = asarray(matrix)
+    if matrix.size() == (n_axes + 1, n_axes + 1):
+        # homogenous transform matrix
+        coords = torch.tensordot(
+            matrix, torch.stack((*idxs, torch.ones_like(idxs[0])), dim=0), dims=1
+        )[:-1]
+    elif matrix.size() == (n_axes,):
+        coords = (idxs.T * matrix + asarray(offset)).T
+    else:
+        raise ValueError(f"Expected matrix of shape ({n_axes + 1}, {n_axes + 1}) or ({n_axes},), instead got shape {matrix.shape}")
+
+    return _MockTensor(torch.vmap(
+        lambda a: map_coordinates(a, coords, order=order, mode=mode, cval=cval)
+    )(input.reshape(-1, *input.shape[-n_axes:])).reshape((*input.shape[:-n_axes], *output_shape)))
+
+
+def map_coordinates(
+    arr: torch.Tensor, coordinates: torch.Tensor,
+    order: int = 1, mode: _InterpBoundaryMode = 'grid-constant',
+    cval: ArrayLike = 0.0
+) -> torch.Tensor:
+    from phaser.utils.num import to_real_dtype
+    if arr.ndim != coordinates.shape[0]:
+        raise ValueError("invalid shape for coordinate array")
+
+    if order not in (0, 1):
+        raise ValueError(f"Interpolation order {order} not supported (torch currently only supports order=0, 1)")
+
+    if mode == 'grid-constant':
+        return _map_coordinates_constant(
+            arr, coordinates, order=order, cval=cval
+        )
+
+    remap_fn = _BOUNDARY_FNS.get(mode)
+    if remap_fn is None:
+        raise ValueError(f"Interpolation mode '{mode}' not supported (torch supports one of "
+                         "('constant', 'nearest', 'reflect', 'mirror', 'grid-wrap'))")
+
+    weight_dtype = to_torch_dtype(to_real_dtype(to_numpy_dtype(arr.dtype)))
+
+    ax_nodes: t.List[t.Tuple[t.Tuple[torch.Tensor, torch.Tensor], ...]] = []
+
+    for ax_coords, size in zip(coordinates, arr.shape):
+        if order == 1:
+            lower = torch.floor(ax_coords)
+            upper_weight = ax_coords - lower
+            lower_idx = lower.type(torch.int32)
+            ax_nodes.append((
+                (remap_fn(lower_idx, size), 1.0 - upper_weight),
+                (remap_fn(lower_idx + 1, size), upper_weight),
+            ))
+        else:
+            idx = torch.round(ax_coords).type(torch.int32)
+            ax_nodes.append(((remap_fn(idx, size), torch.ones((), dtype=weight_dtype)),))
+
+    outputs = []
+    for corner in itertools.product(*ax_nodes):
+        idxs, weights = zip(*corner)
+        outputs.append(arr[idxs] * functools.reduce(operator.mul, weights))
+
+    result = functools.reduce(operator.add, outputs)
+    return _MockTensor(result.type(arr.dtype))
+
+
+def _map_coordinates_constant(
+    arr: torch.Tensor, coordinates: torch.Tensor,
+    order: int = 1, cval: ArrayLike = 0.0
+) -> torch.Tensor:
+    from phaser.utils.num import to_real_dtype
+    weight_dtype = to_torch_dtype(to_real_dtype(to_numpy_dtype(arr.dtype)))
+    cval = torch.tensor(cval)
+
+    is_valid = lambda idx, size: (0 <= idx) & (idx < size)  # noqa: E731
+    clip = lambda idx, size: torch.clip(idx, 0, size - 1)   # noqa: E731
+
+    ax_nodes: t.List[t.Tuple[t.Tuple[torch.Tensor, torch.Tensor, torch.Tensor], ...]] = []
+
+    for ax_coords, size in zip(coordinates, arr.shape):
+        if order == 1:
+            lower = torch.floor(ax_coords)
+            upper_weight = ax_coords - lower
+            lower_idx = lower.type(torch.int32)
+            ax_nodes.append((
+                (clip(lower_idx, size), is_valid(lower_idx, size), 1.0 - upper_weight),
+                (clip(lower_idx + 1, size), is_valid(lower_idx + 1, size), upper_weight),
+            ))
+        else:
+            idx = torch.round(ax_coords).type(torch.int32)
+            ax_nodes.append(((clip(idx, size), is_valid(idx, size), torch.ones((), dtype=weight_dtype)),))
+
+    outputs = []
+    for corner in itertools.product(*ax_nodes):
+        idxs, valids, weights = zip(*corner)
+        val = torch.where(functools.reduce(operator.and_, valids), arr[idxs], cval)
+        outputs.append(val * functools.reduce(operator.mul, weights))
+
+    result = functools.reduce(operator.add, outputs)
+    return result.type(arr.dtype)
+
 
 
 def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:

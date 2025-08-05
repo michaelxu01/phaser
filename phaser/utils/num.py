@@ -18,7 +18,7 @@ from .tree import tree_dataclass
 
 
 if t.TYPE_CHECKING:
-    from phaser.utils.image import _BoundaryMode
+    from phaser.utils.image import _InterpBoundaryMode
 
 
 Float: t.TypeAlias = t.Union[float, numpy.floating]
@@ -814,7 +814,7 @@ class Sampling:
         self, arr: NDArray[NumT], new_samp: 'Sampling', *,
         rotation: float = 0.0,
         order: int = 1,
-        mode: '_BoundaryMode' = 'grid-constant',
+        mode: '_InterpBoundaryMode' = 'grid-constant',
         cval: t.Union[NumT, float] = 0.0,
     ) -> NDArray[NumT]:
         from .image import affine_transform, rotation_matrix
@@ -836,7 +836,7 @@ class Sampling:
         self, arr: NDArray[NumT], new_samp: 'Sampling', *,
         rotation: float = 0.0,
         order: int = 1,
-        mode: '_BoundaryMode' = 'grid-constant',
+        mode: '_InterpBoundaryMode' = 'grid-constant',
         cval: t.Union[NumT, float] = 0.0,
         fftshift: bool = True,
     ) -> NDArray[NumT]:

@@ -19,7 +19,7 @@ from .misc import create_rng
 
 
 if t.TYPE_CHECKING:
-    from phaser.utils.image import _BoundaryMode
+    from phaser.utils.image import _InterpBoundaryMode
 
 
 @t.overload
@@ -431,7 +431,7 @@ class ObjectSampling:
 
     def resample(
         self, arr: NDArray[NumT], new_samp: 'ObjectSampling', *,
-        order: int = 1, mode: '_BoundaryMode' = 'grid-constant',
+        order: int = 1, mode: '_InterpBoundaryMode' = 'grid-constant',
         cval: t.Union[NumT, float] = 1.0,
         rotation: t.Optional[float] = None,
         affine: t.Optional[ArrayLike] = None,
