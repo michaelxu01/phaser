@@ -24,7 +24,7 @@ from phaser.utils.image import affine_transform
 from phaser.utils.physics import Electron
 from phaser.utils.misc import unwrap
 from phaser.plan import ReconsPlan, EnginePlan, EngineHook
-from phaser.state import ReconsState, PartialReconsState, Patterns
+from phaser.state import ReconsState, PartialReconsState, Patterns, PreparedRecons, IterState, ProgressState
 from phaser.execute import Observer, initialize_reconstruction, prepare_for_engine
 
 base_dir = Path(__file__).parent.absolute()
@@ -37,7 +37,7 @@ ROT_ANGLE = -43.0
 
 
 @functools.cache
-def load_ground_truth() -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
+def load_ground_truth() -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]: #units of rad/ang
     with tifffile.TiffFile(GROUND_TRUTH_PATH) as f:
         ground_truth = f.asarray()
         ground_truth_sampling: NDArray[numpy.float64] = numpy.array(f.shaped_metadata[0]['spacing'])  # type: ignore
@@ -156,10 +156,10 @@ class OptunaObserver(Observer):
         with open(self.trial_path / 'plan.json', 'w') as f:
             json.dump(plan_json, f, indent=4)
 
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
+    def update_iteration(self, state: ReconsState, i: int, n: int, error: t.Optional[float] = None):
         super().update_iteration(state, i, n, error)
 
-        i += self.start_iter
+        #i += self.start_iter
 
         if i % MEASURE_EVERY == 0:
             error, mean_obj, ground_truth = calc_error(state)
@@ -175,18 +175,18 @@ class OptunaObserver(Observer):
 
 
 @functools.cache
-def initialize() -> t.Tuple[ReconsPlan, Patterns, ReconsState]:
+def initialize() -> t.Tuple[ReconsPlan, PreparedRecons]: # t.Tuple[ReconsPlan, Patterns, ReconsState]:
     plan = ReconsPlan.from_data({
         "name": "prsco3-grad",
         "backend": "jax",
         'dtype': 'float32',
         'raw_data': {
             'type': 'empad',
-            'path': '~/raw-ptycho/chen2021-PSO/PSO.json',
+            'path': '~/lebeau_shared/ptycho_example/exp-prsco3/chen2021-PSO/PSO.json',
         },
-        "init": {
-            'state': str(base_dir / "init.h5"),
-        },
+        # "init": {
+            # 'state': str(base_dir / "init.h5"),
+        # },
         'post_load': [
         ],
         'post_init': [
@@ -198,7 +198,8 @@ def initialize() -> t.Tuple[ReconsPlan, Patterns, ReconsState]:
     })
     xp = get_backend_module(plan.backend)
 
-    (patterns, state) = initialize_reconstruction(plan, xp, Observer())
+    # (patterns, state) = 
+    recons = initialize_reconstruction(plan=plan, xp=xp, observers=[Observer()])
 
     # pad reconstruction
     # new_sampling = Sampling((192, 192), extent=tuple(state.probe.sampling.extent))
@@ -208,13 +209,15 @@ def initialize() -> t.Tuple[ReconsPlan, Patterns, ReconsState]:
     # patterns.pattern_mask = state.probe.sampling.resample_recip(patterns.pattern_mask, new_sampling)
     # state.probe.sampling = new_sampling
 
-    return (plan, patterns, state.to_numpy())
+    return (plan, recons) #(plan, patterns, state.to_numpy())
 
 
 def objective(trial: optuna.Trial):
-    (plan, patterns, init_state) = initialize()
-    xp = get_backend_module(plan.backend)
-
+    # (plan, patterns, init_state) = 
+    (plan, recons) = initialize()
+    # xp = get_backend_module(plan.backend)
+    xp = get_array_module(recons.state.object.data, recons.state.probe.data)
+    
     noise_model_eps = trial.suggest_float('noise_model_eps', 1.0e-1, 10.0, log=True)
 
     obj_lr = trial.suggest_float('obj_learning_rate', 1.0e-4, 1.0, log=True)
@@ -231,7 +234,7 @@ def objective(trial: optuna.Trial):
         'grouping': 128,
         'bwlim_frac': 0.8,
         'probe_modes': 8,
-        'sim_shape': [256, 256],
+        'sim_shape': [128, 128],
         'noise_model': {
             'type': 'poisson',
             'eps': noise_model_eps,
@@ -277,17 +280,30 @@ def objective(trial: optuna.Trial):
     }, EngineHook)
 
     observer = OptunaObserver(trial)
+
+    # TODO: plan (type reconsplan) and engine_1.props (type engineplan) names inconsistent with phaser execute.py
     #observer.save_json(plan, [engine_1, engine_2])
     observer.save_json(plan, [engine_1])
 
-    (patterns, state) = prepare_for_engine(patterns, init_state, xp, t.cast(EnginePlan, engine_1.props))
+    (patterns, state) = prepare_for_engine(recons.patterns, recons.state, xp, t.cast(EnginePlan, engine_1.props))
+    
+    engine_i = recons.state.iter.engine_num
+
+    recons.state.iter = IterState(
+        engine_num=engine_i + 1,
+        engine_iter=0,
+        n_engine_iters=engine_1.niter,
+        total_iter=recons.state.iter.total_iter,
+        n_total_iters=recons.state.iter.n_total_iters,
+    )
+
     state = engine_1({
         'data': patterns,
         'state': state,
         'dtype': patterns.patterns.dtype,
         'xp': xp,
         'recons_name': plan.name,
-        'engine_i': 0,
+        # 'engine_i': 0,
         'observer': observer,
         'seed': None,
     })
@@ -324,6 +340,7 @@ if __name__ == '__main__':
     sampler = TPESampler(constant_liar=True)
     # don't prune before iteration 21, don't prune at a given step unless we have at least 10 datapoints
     pruner = PercentilePruner(50.0, n_min_trials=10, n_warmup_steps=21)
+    # noppruner will not prune
 
     if verb in ('recreate', 'create'):
         if verb == 'recreate':
