@@ -120,13 +120,14 @@ def to_affine_matrix(arr: ArrayLike, ndim: int = 2) -> NDArray[numpy.floating]:
                          f" ({ndim+1},), or ({ndim},), instead got shape: {arr.shape}")
 
     assert arr.shape == (ndim+1, ndim+1)
-    return arr.astype(numpy.floating)
+    return arr.astype(numpy.promote_types(arr.dtype, numpy.float32)) #arr.astype(numpy.floating)
 
 
 def scale_matrix(scale: ArrayLike) -> NDArray[numpy.floating]:
     scale = numpy.asarray(scale)
     assert scale.ndim == 1
-    return numpy.diag([*scale, 1.0]).astype(numpy.floating)
+    a = numpy.diag([*scale, 1.0])
+    return a.astype(numpy.promote_types(a.dtype, numpy.float32))
 
 
 def translation_matrix(vec: ArrayLike) -> NDArray[numpy.floating]:
@@ -134,7 +135,7 @@ def translation_matrix(vec: ArrayLike) -> NDArray[numpy.floating]:
     assert vec.ndim == 1
     a = numpy.eye(vec.size + 1, dtype=vec.dtype)
     a[:vec.size, vec.size] = vec
-    return a.astype(numpy.floating)
+    return a.astype(numpy.promote_types(a.dtype, numpy.float32)) #a.astype(numpy.floating)
 
 
 def rotation_matrix(theta: float) -> NDArray[numpy.floating]:
