@@ -25,7 +25,7 @@ from phaser.utils.physics import Electron
 from phaser.utils.misc import unwrap
 from phaser.plan import ReconsPlan, EnginePlan, EngineHook
 from phaser.state import ReconsState, PartialReconsState, Patterns, PreparedRecons, IterState, ProgressState
-from phaser.execute import Observer, initialize_reconstruction, prepare_for_engine
+from phaser.execute import Observer, execute_engine, initialize_reconstruction, prepare_for_engine
 
 base_dir = Path(__file__).parent.absolute()
 
@@ -174,8 +174,7 @@ class OptunaObserver(Observer):
             raise optuna.TrialPruned()
 
 
-@functools.cache
-def initialize() -> t.Tuple[ReconsPlan, PreparedRecons]: # t.Tuple[ReconsPlan, Patterns, ReconsState]:
+def initialize(observer: Observer) -> t.Tuple[ReconsPlan, PreparedRecons]: # t.Tuple[ReconsPlan, Patterns, ReconsState]:
     plan = ReconsPlan.from_data({
         "name": "prsco3-grad",
         "backend": "jax",
@@ -199,7 +198,7 @@ def initialize() -> t.Tuple[ReconsPlan, PreparedRecons]: # t.Tuple[ReconsPlan, P
     xp = get_backend_module(plan.backend)
 
     # (patterns, state) = 
-    recons = initialize_reconstruction(plan=plan, xp=xp, observers=[Observer()])
+    recons = initialize_reconstruction(plan=plan, xp=xp, observers=observer)
 
     # pad reconstruction
     # new_sampling = Sampling((192, 192), extent=tuple(state.probe.sampling.extent))
@@ -214,7 +213,8 @@ def initialize() -> t.Tuple[ReconsPlan, PreparedRecons]: # t.Tuple[ReconsPlan, P
 
 def objective(trial: optuna.Trial):
     # (plan, patterns, init_state) = 
-    (plan, recons) = initialize()
+    observer = OptunaObserver(trial)
+    (plan, recons) = initialize(observer)
     # xp = get_backend_module(plan.backend)
     xp = get_array_module(recons.state.object.data, recons.state.probe.data)
     
@@ -279,46 +279,8 @@ def objective(trial: optuna.Trial):
         },
     }, EngineHook)
 
-    observer = OptunaObserver(trial)
-
-    # TODO: plan (type reconsplan) and engine_1.props (type engineplan) names inconsistent with phaser execute.py
-    #observer.save_json(plan, [engine_1, engine_2])
     observer.save_json(plan, [engine_1])
-
-    (patterns, state) = prepare_for_engine(recons.patterns, recons.state, xp, t.cast(EnginePlan, engine_1.props))
-    
-    engine_i = recons.state.iter.engine_num
-
-    recons.state.iter = IterState(
-        engine_num=engine_i + 1,
-        engine_iter=0,
-        n_engine_iters=engine_1.niter,
-        total_iter=recons.state.iter.total_iter,
-        n_total_iters=recons.state.iter.n_total_iters,
-    )
-
-    state = engine_1({
-        'data': patterns,
-        'state': state,
-        'dtype': patterns.patterns.dtype,
-        'xp': xp,
-        'recons_name': plan.name,
-        # 'engine_i': 0,
-        'observer': observer,
-        'seed': None,
-    })
-
-    #(patterns_pad, state) = prepare_for_engine(patterns, state, xp, t.cast(EnginePlan, engine_2.props))
-    #state = engine_2({
-    #    'data': patterns_pad,
-    #    'state': state,
-    #    'dtype': patterns_pad.patterns.dtype,
-    #    'xp': xp,
-    #    'recons_name': plan.name,
-    #    'engine_i': 1,
-    #    'observer': observer,
-    #    'seed': None,
-    #})
+    execute_engine(recons, engine_1)
 
     return observer.last_error
 
