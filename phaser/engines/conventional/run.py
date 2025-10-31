@@ -51,9 +51,9 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     position_solver = None if props.position_solver is None else props.position_solver(None)
     position_solver_state = None if position_solver is None else position_solver.init_state(sim.state)
-
+    other_keys = ('positions_update_rms', ) if position_solver is not None else ()
     # populate missing keys in progress dictionary
-    for k in ('detector_loss', 'total_loss', 'update_mag'):
+    for k in (*('detector_loss', 'total_loss'), *other_keys):
         if k not in sim.state.progress:
             sim.state.progress[k] = ProgressState()
 
@@ -100,7 +100,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         sim = sim.apply_iter_constraints()
 
-        update_mag = 0
+        # update_mag = 0
         if iter_update_positions:
             if not position_solver:
                 raise ValueError("Updating positions with no PositionSolver specified")
@@ -110,16 +110,16 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
             pos_update, position_solver_state = position_solver.perform_update(sim.state.scan, pos_update, position_solver_state)
             # subtract mean again (this can change with momentum)
             pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
-            update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
-            logger.info(f"Position update: mean {xp.mean(update_mag)}")
+            pos_update_rms = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
+            logger.info(f"Position update: mean {xp.mean(pos_update_rms)}")
             sim.state.scan += pos_update
             assert_dtype(sim.state.scan, dtype)
 
             # check positions are at least overlapping object
             sim.state.object.sampling.check_scan(sim.state.scan, sim.state.probe.sampling.extent / 2.)
-        for k in ('update_mag', ):
-            progress[k].iters.append(i + start_i)
-            progress[k].values.append(xp.mean(update_mag))
+        # for k in ('update_mag', ):
+            progress['positions_update_rms'].iters.append(i + start_i)
+            progress['positions_update_rms'].values.append(xp.mean(pos_update_rms))
 
         error = None
         if group_errors is not None and len(group_errors):
