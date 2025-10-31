@@ -213,14 +213,14 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
 
     loss_keys = ('detector_loss', 'total_loss', *(reg.name() for reg in regularizers))
-    other_keys = ('update_mag', )
+
+    other_keys = (*(f'{iter_var}_update_rms' for iter_var in all_vars if iter_var in _PER_ITER_VARS), )
+
     # populate missing keys in progress dictionary
-    for k in loss_keys:
+    for k in (*loss_keys, *other_keys):
         if k not in state.progress:
             state.progress[k] = ProgressState()
-    for k in other_keys:
-        if k not in state.progress:
-            state.progress[k] = ProgressState()
+    
     # progress gets clobbered by the jits, so we keep track of it manually
     progress = state.progress
 
@@ -279,7 +279,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             progress[k].iters.append(i + start_i)
             progress[k].values.append(v)
 
-        update_mag = 0
         # update per-iteration solvers
         for (sol_i, solver) in enumerate(iter_solvers):
             solver_grads = filter_vars(iter_grads, solver.params)
@@ -289,11 +288,15 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), losses['total_loss']
             )
             state = apply_update(state, update)
-            update_mag = xp.linalg.norm(update['positions'], axis=-1)
+            if 'positions' in update:
+                pos_update_rms = xp.linalg.norm(update['positions'], axis=-1)
+                progress['positions_update_rms'].iters.append(i + start_i)
+                progress['positions_update_rms'].values.append(xp.mean(pos_update_rms))
+            if 'tilt' in update:
+                tilt_update_rms = xp.linalg.norm(update['tilt'], axis=-1)
+                progress['tilt_update_rms'].iters.append(i + start_i)
+                progress['tilt_update_rms'].values.append(xp.mean(tilt_update_rms))
 
-        for (k) in other_keys:
-            progress[k].iters.append(i + start_i)
-            progress[k].values.append(xp.mean(update_mag))
 
         for (reg_i, reg) in enumerate(iter_constraints):
             (state, iter_constraint_states[reg_i]) = reg.apply_iter(
