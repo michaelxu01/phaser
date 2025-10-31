@@ -53,7 +53,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     position_solver_state = None if position_solver is None else position_solver.init_state(sim.state)
 
     # populate missing keys in progress dictionary
-    for k in ('detector_loss', 'total_loss'):
+    for k in ('detector_loss', 'total_loss', 'update_mag'):
         if k not in sim.state.progress:
             sim.state.progress[k] = ProgressState()
 
@@ -100,6 +100,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         sim = sim.apply_iter_constraints()
 
+        update_mag = 0
         if iter_update_positions:
             if not position_solver:
                 raise ValueError("Updating positions with no PositionSolver specified")
@@ -116,6 +117,9 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
             # check positions are at least overlapping object
             sim.state.object.sampling.check_scan(sim.state.scan, sim.state.probe.sampling.extent / 2.)
+        for k in ('update_mag', ):
+            progress[k].iters.append(i + start_i)
+            progress[k].values.append(xp.mean(update_mag))
 
         error = None
         if group_errors is not None and len(group_errors):
