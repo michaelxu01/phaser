@@ -103,7 +103,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         sim = sim.apply_iter_constraints()
 
-        # update_mag = 0
         if iter_update_positions:
             if not position_solver:
                 raise ValueError("Updating positions with no PositionSolver specified")
