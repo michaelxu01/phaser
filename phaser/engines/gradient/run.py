@@ -298,7 +298,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
             if 'tilt' in update:
                 mean_tilt_update = to_numpy(xp.mean(xp.abs(update['tilt']), tuple(range(update['tilt'].ndim - 1))))
-                tilt_update_rms = float(xp.mean(xp.abs(update['tilt']), tuple(range(update['tilt'].ndim - 1))))
+                tilt_update_rms = float(xp.mean(xp.linalg.norm(update['tilt'], axis=-1)))
                 progress['tilt_update_rms'].iters.append(i + start_i)
                 progress['tilt_update_rms'].values.append(tilt_update_rms)
                 logger.info(f"Tilt update: mean {mean_tilt_update} mrad")  # average tilt update, [y, x]
