@@ -105,13 +105,14 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
             # apply mask to scan as well
             scan_pos = scan_pos[~mask]
             if scan_meta['type'] == 'raster':
-                rows = scan_meta['rows'].reshape(-1, 1)
-                cols = scan_meta['cols'].reshape(-1, 1)
-                scan_meta['rows'] = rows[~mask]
-                scan_meta['cols'] = cols[~mask]
-                assert scan_meta['rows'].shape[0] == scan_pos.shape[0], f"After filtering, # of scan positions {scan_pos.shape[0]} doesn't match # of rows/cols {scan_meta['rows'].shape[0]}"
-            else:
-                logger.info("Not raster scan, not updating scan metadata rows/cols")
+                if 'rows' in scan_meta:
+                    if scan_meta['rows'].shape[:-1] != args['state'].scan.data.shape[:-1]:
+                        raise ValueError("Scan 'rows' metadata shape doesn't match scan data shape")
+                    scan_meta['rows'] = scan_meta['rows'].reshape(-1, 1)[~mask]
+                if 'cols' in scan_meta:
+                    if scan_meta['cols'].shape[:-1] != args['state'].scan.data.shape[:-1]:
+                        raise ValueError("Scan 'cols' metadata shape doesn't match scan data shape")
+                    scan_meta['cols'] = scan_meta['cols'].reshape(-1, 1)[~mask]
         elif scan_pos.shape[0] != patterns.shape[0]:
             raise ValueError(f"# of scan positions {scan_pos.shape[0]} doesn't match # of patterns"
                              f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")

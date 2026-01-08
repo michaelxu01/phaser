@@ -138,8 +138,8 @@ class ProgressState:
         import copy
         return copy.deepcopy(self)
 
-@tree_dataclass
-class ScanState():
+@tree_dataclass(static_fields=('metadata',))
+class ScanState:
     # sampling: ObjectSampling
     # """Object coordinate system. See `ObjectSampling` for more details."""
     data: NDArray[numpy.floating]

@@ -136,7 +136,7 @@ class RasterScanProps(Dataclass):
     affine: t.Optional[t.Annotated[NDArray[numpy.floating], annotations.shape((2, 2))]] = None
 
 
-class ScanHook(Hook[ScanHookArgs, ScanState]):
+class ScanHook(Hook[ScanHookArgs, 'ScanState']):
     known = {
         'raster': ('phaser.hooks.scan:raster_scan', RasterScanProps),
     }

@@ -69,7 +69,7 @@ def process_solvers(
 _PATH_MAP: t.Dict[t.Tuple[str, ...], ReconsVar] = {
     ('object', 'data'): 'object',
     ('probe', 'data'): 'probe',
-    ('scan',): 'positions',
+    ('scan', 'data'): 'positions',
     ('tilt',): 'tilt'
 }
 

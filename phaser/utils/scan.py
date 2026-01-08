@@ -52,7 +52,9 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
 
     yy_ind = xp2.arange(shape[0], dtype=dtype)
     xx_ind = xp2.arange(shape[1], dtype=dtype)
-    yy_grid, xx_grid = xp2.meshgrid(yy_ind, xx_ind, indexing='ij')
+    grid_inds = xp2.stack(xp2.meshgrid(yy_ind, xx_ind, indexing='ij'), axis=-1)
+    yy_grid = grid_inds[..., 0]
+    xx_grid = grid_inds[..., 1]
 
     if affine is not None:
         affine = xp2.asarray(affine, dtype=dtype)
