@@ -32,7 +32,10 @@ class CostRegularizer(HasState[StateT], t.Protocol[StateT]):
     def calc_loss_group(self, group: NDArray[numpy.integer], sim: 'ReconsState', state: StateT) -> t.Tuple['Float', StateT]:
         ...
 
-
+class ScanConstraintProps(Dataclass):
+    type: t.Literal['affine', 'line'] = 'affine'
+    weight: float = 1.0
+    
 class ClampObjectAmplitudeProps(Dataclass):
     amplitude: t.Union[float, t.List[t.Optional[float]]] = 1.1
 
@@ -76,6 +79,7 @@ class NonNegObjectPhaseProps(Dataclass):
 
 class IterConstraintHook(Hook[None, IterConstraint]):
     known = {
+        'scan_constraint': ('phaser.engines.common.regularizers:ScanConstraint', ScanConstraintProps),
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
         'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),

@@ -124,7 +124,7 @@ def _normalize_observers(
 
     return ObserverSet(obs)
 
-
+## FIXME: the scan normalization here - happens before dropnans and scan data flattening, but may alter shape and therefore rows/cols? why is this needed
 def _normalize_scan_shape(
     patterns: Patterns, state: ReconsState
 ) -> t.Tuple[Patterns, ReconsState]:
@@ -136,8 +136,8 @@ def _normalize_scan_shape(
     dimensional shape of the two. 'state.tilt' is reshaped as well.
     """
     patterns_shape = patterns.patterns.shape[:-2]
-    scan_shape = state.scan.shape[:-1]
-
+    scan_shape = state.scan.data.shape[:-1]
+    print('patterns shape:', patterns_shape, 'scan shape:', scan_shape)
     n_patterns = math.prod(patterns_shape)
     n_scan = math.prod(scan_shape)
     if n_scan != n_patterns:
@@ -147,7 +147,7 @@ def _normalize_scan_shape(
     new_shape = scan_shape if len(scan_shape) > len(patterns_shape) else patterns_shape
 
     patterns.patterns = patterns.patterns.reshape((*new_shape, *patterns.patterns.shape[-2:]))
-    state.scan = state.scan.reshape((*new_shape, 2))
+    state.scan.data = state.scan.data.reshape((*new_shape, 2))
 
     if state.tilt is not None:
         n_tilt = math.prod(state.tilt.shape[:-1])
@@ -319,14 +319,14 @@ def initialize_reconstruction(
     elif tilt_hook is not None:
         logging.info("Initializing tilt...")
         tilt = pane.from_data(tilt_hook, TiltHook)(  # type: ignore
-            {'dtype': dtype, 'xp': xp, 'shape': scan.shape[:-1]}
+            {'dtype': dtype, 'xp': xp, 'shape': scan.data.shape[:-1]}
         )
     else:
         tilt = None
 
     obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
     obj_sampling = ObjectSampling.from_scan(
-        scan, sampling.sampling, sampling.extent / 2. + obj_pad_px * sampling.sampling
+        scan.data, sampling.sampling, sampling.extent / 2. + obj_pad_px * sampling.sampling
     )
 
     if init_state.object is not None and plan.init.object is None:
@@ -411,7 +411,7 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         obj_sampling = obj_sampling.with_sampling(state.probe.sampling.sampling)
 
     obj_sampling_pad = obj_sampling.expand_to_scan(
-        state.scan, state.probe.sampling.extent / 2. + engine.obj_pad_px * state.probe.sampling.sampling
+        state.scan.data, state.probe.sampling.extent / 2. + engine.obj_pad_px * state.probe.sampling.sampling
     )
 
     if obj_sampling_pad != obj_sampling:
@@ -447,7 +447,7 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         solver_vars = set(itertools.chain.from_iterable(engine.solvers.keys()))
         if 'tilt' in solver_vars and state.tilt is None:
             logging.info("Creating new, zeroed tilt map...")
-            state.tilt = xp.zeros_like(state.scan)
+            state.tilt = xp.zeros_like(state.scan.data)
 
     return patterns, state
 

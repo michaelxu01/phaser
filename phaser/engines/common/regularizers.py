@@ -11,12 +11,57 @@ from phaser.utils.num import (
 )
 from phaser.utils.image import convolve1d
 from phaser.state import ReconsState
-from phaser.hooks.regularization import (
+from phaser.hooks.regularization import (ScanConstraintProps,
     ClampObjectAmplitudeProps, LimitProbeSupportProps, NonNegObjectPhaseProps,
     RegularizeLayersProps, ObjLowPassProps, GaussianProps,
     CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps
 )
 
+class ScanConstraint:
+    def __init__(self, args: None, props: ScanConstraintProps):
+        self.min: t.Optional[float]
+        self.max: t.Optional[float]
+
+        if isinstance(props.amplitude, list):
+            self.min, self.max = props.amplitude
+        else:
+            self.min = None
+            self.max = props.amplitude
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        cast = to_real_dtype(sim.object.data.dtype)
+        sim.object.data = clamp_amplitude(sim.object.data, None if self.min is None else cast(self.min), None if self.max is None else cast(self.max))
+        return (sim, None)
+
+
+@partial(jit, donate_argnames=('obj',), cupy_fuse=True)
+def scan_affine(
+    obj: NDArray[numpy.complexfloating],
+    min: t.Union[float, numpy.floating, None],
+    max: t.Union[float, numpy.floating, None]
+) -> NDArray[numpy.complexfloating]:
+    xp = get_array_module(obj)
+
+    obj_amp = xp.abs(obj)
+    new_amp = obj_amp
+
+    if min is not None and max is not None:
+        new_amp = xp.clip(new_amp, min, max)
+    elif min is not None:
+        new_amp = xp.maximum(new_amp, min)
+    elif max is not None:
+        new_amp = xp.minimum(new_amp, max)
+    else:
+        return obj
+
+    scale = xp.where(obj_amp > 0, new_amp / obj_amp, 0.0) #no divide by 0
+    return obj * scale
 
 class ClampObjectAmplitude:
     def __init__(self, args: None, props: ClampObjectAmplitudeProps):
@@ -250,7 +295,7 @@ class ObjL1:
         xp = get_array_module(sim.object.data)
 
         cost = xp.sum(xp.abs(sim.object.data - 1.0))
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
         return (cost * cost_scale * self.cost, state)
 
 
@@ -272,7 +317,7 @@ class ObjL2:
 
         cost = xp.sum(abs2(sim.object.data - 1.0))
 
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
         return (cost * cost_scale * self.cost, state)  # type: ignore
 
 
@@ -293,7 +338,7 @@ class ObjPhaseL1:
         xp = get_array_module(sim.object.data)
 
         cost = xp.sum(xp.abs(xp.angle(sim.object.data)))
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
         return (cost * cost_scale * self.cost, state)
 
 
@@ -319,7 +364,7 @@ class ObjRecipL1:
             xp.abs(fft2(xp.prod(sim.object.data, axis=0)))
         )
         # scale cost by fraction of the total reconstruction in the group
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
 
         return (cost * cost_scale * self.cost, state)
 
@@ -351,7 +396,7 @@ class ObjTotalVariation:
         #)
         # scale cost by fraction of the total reconstruction in the group
         # TODO also scale by # of pixels or similar?
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
 
         return (cost * cost_scale * self.cost, state)
 
@@ -377,7 +422,7 @@ class ObjTikhonov:
             xp.sum(abs2(xp.diff(sim.object.data, axis=-2)))
         )
         # scale cost by fraction of the total reconstruction in the group
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
 
         return (cost * cost_scale * self.cost, state)  # type: ignore
 
@@ -403,7 +448,7 @@ class LayersTotalVariation:
 
         cost = xp.sum(xp.abs(xp.diff(sim.object.data, axis=0)))
         # scale cost by fraction of the total reconstruction in the group
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
 
         return (cost * cost_scale * self.cost, state)
 
@@ -429,7 +474,7 @@ class LayersTikhonov:
 
         cost = xp.sum(abs2(xp.diff(sim.object.data, axis=0)))
         # scale cost by fraction of the total reconstruction in the group
-        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.shape[:-1]), dtype=cost.dtype)
+        cost_scale = xp.array(group.shape[-1] / prod(sim.scan.data.shape[:-1]), dtype=cost.dtype)
 
         return (cost * cost_scale * self.cost, state)  # type: ignore
 
@@ -519,7 +564,7 @@ class UnstructuredGaussian:
         self.attr_path = props.attr_path
 
     def init_state(self, sim: ReconsState) -> NDArray[numpy.floating]:
-        xp = get_array_module(sim.scan)
+        xp = get_array_module(sim.scan.data)
         try:
             self.getattr_nested(sim, self.attr_path)
         except AttributeError as e:
@@ -547,8 +592,8 @@ class UnstructuredGaussian:
     def apply_iter(self, sim: ReconsState, state: NDArray[numpy.floating]) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
         from scipy.spatial import KDTree
         obj_samp = sim.object.sampling
-        scan_flat = sim.scan.reshape(-1, 2)
-        scan_ndim = sim.scan.ndim - 1
+        scan_flat = sim.scan.data.reshape(-1, 2)
+        scan_ndim = sim.scan.data.ndim - 1
 
         attr = self.getattr_nested(sim, self.attr_path)
         vals = t.cast(NDArray[numpy.inexact], getattr(attr, 'data', attr))  # Extract raw array

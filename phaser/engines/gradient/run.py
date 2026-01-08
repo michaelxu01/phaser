@@ -114,8 +114,8 @@ def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -
         # subtract mean position update
         xp = get_array_module(update['positions'])
         update['positions'] -= xp.mean(update['positions'], tuple(range(update['positions'].ndim - 1)))
-
-        state.scan += update['positions']
+        print(f"{state.scan.data.shape} {update['positions'].shape}")
+        state.scan.data += update['positions']
 
     return state
 
@@ -178,7 +178,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     }
     # shuffle_groups defaults to True for sparse groups, False for compact groups
     shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
-    groups = GroupManager(state.scan, props.grouping, props.compact, seed)
+    groups = GroupManager(state.scan.data, props.grouping, props.compact, seed)
 
     observer.init_engine(
         state, recons_name=args['recons_name'],
@@ -190,7 +190,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
     # runs rescaling
     rescale_factors = []
-    for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan),
+    for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan.data),
                                                                         patterns, xp=xp, buf_n=props.buffer_n_groups)):
         group_rescale_factors = dry_run(state, group, propagators, group_patterns, xp=xp, dtype=dtype)
         rescale_factors.append(group_rescale_factors)
@@ -252,7 +252,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             for (solver, solver_state) in zip(iter_solvers, iter_solver_states)
         ]
 
-        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
+        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan.data, i, iter_shuffle_groups),
                                                                             patterns, xp=xp, buf_n=props.buffer_n_groups)):
             (state, group_losses, iter_grads, solver_states) = run_group(
                 state, group=group, vars=iter_vars,
@@ -314,8 +314,8 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         if 'positions' in iter_vars:
             # check positions are at least overlapping object
-            state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
-            assert_dtype(state.scan, dtype)
+            state.object.sampling.check_scan(state.scan.data, state.probe.sampling.extent / 2.)
+            assert_dtype(state.scan.data, dtype)
 
         state.progress = progress
         observer.update_iteration(state, i, props.niter, losses)
@@ -403,7 +403,7 @@ def run_model(
 ) -> t.Tuple[Float, t.Tuple[SolverStates, t.Dict[str, Float]]]:
     # apply vars to simulation
     sim = insert_vars(vars, sim, group)
-    group_scan = sim.scan
+    group_scan = sim.scan.data
     group_tilts = sim.tilt
 
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
@@ -460,8 +460,8 @@ def dry_run(
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
 
     probes = sim.probe.data
-    group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[tuple(group)], probes.shape[-2:])
-    group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[tuple(group)], probes.shape[-2:]))[:, None, ...]
+    group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan.data[tuple(group)], probes.shape[-2:])
+    group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan.data[tuple(group)], probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):

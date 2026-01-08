@@ -12,7 +12,7 @@ from .hook import Hook
 if t.TYPE_CHECKING:
     from phaser.utils.num import Sampling
     from phaser.utils.object import ObjectSampling
-    from ..state import ObjectState, ProbeState, ReconsState, Patterns  # noqa: F401
+    from ..state import ObjectState, ProbeState, ScanState, ReconsState, Patterns
     from ..execute import Observer
 
 
@@ -136,7 +136,7 @@ class RasterScanProps(Dataclass):
     affine: t.Optional[t.Annotated[NDArray[numpy.floating], annotations.shape((2, 2))]] = None
 
 
-class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
+class ScanHook(Hook[ScanHookArgs, ScanState]):
     known = {
         'raster': ('phaser.hooks.scan:raster_scan', RasterScanProps),
     }

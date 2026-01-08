@@ -6,9 +6,9 @@ from numpy.typing import NDArray
 from phaser.utils.num import cast_array_module
 from phaser.utils.scan import make_raster_scan
 from . import ScanHookArgs, RasterScanProps
+from ..state import ScanState
 
-
-def raster_scan(args: ScanHookArgs, props: RasterScanProps) -> NDArray[numpy.floating]:
+def raster_scan(args: ScanHookArgs, props: RasterScanProps) -> ScanState:
     xp = cast_array_module(args['xp'])
     logger = logging.getLogger(__name__)
 
@@ -29,9 +29,13 @@ def raster_scan(args: ScanHookArgs, props: RasterScanProps) -> NDArray[numpy.flo
                 f" rotation {rot:.2f} deg"
                 f" affine transformation {affine.ravel() if affine is not None else 'None'}")
     
-    scan = make_raster_scan(
+    scan_pos, rows, cols = make_raster_scan(
         props.shape, step_size, rot, affine,
         dtype=args['dtype'], xp=xp,
     )
 
-    return scan
+    logger.info(f"Generated scan with {scan_pos.shape[0]}x{scan_pos.shape[1]}={scan_pos.shape[0]*scan_pos.shape[1]} positions.")
+    logger.info(f"Accompanying scan metadata: type 'raster', {rows.shape} rows (y), {cols.shape} cols (x).")
+    return ScanState(data = scan_pos, 
+                     metadata={'type': 'raster', 
+                               'rows': rows, 'cols': cols})

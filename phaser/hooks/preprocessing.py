@@ -14,6 +14,8 @@ from . import RawData, PostInitArgs, PoissonProps, ScaleProps, DropNanProps, Cro
 
 logger = logging.getLogger(__name__)
 
+## FIXME: the scan flattening is done here, but doesn't safely handle any row or column metadata. 
+## should the scan be flattened when initialized and metadata generated in raster scan hook flow? 
 
 def crop_data(raw_data: RawData, props: CropDataProps) -> RawData:
     if raw_data['patterns'].ndim != 4:
@@ -83,9 +85,11 @@ def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
 
 def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patterns, ReconsState]:
     xp = get_array_module(args['data'].patterns)
-
+    ## FIXME: should the scan be flattened to begin with? is there any situation where we don't want that?
+    
     # flatten scan, tilt, and patterns
-    scan = args['state'].scan.reshape(-1, 2)
+    scan_pos = args['state'].scan.data.reshape(-1, 2)
+    scan_meta = args['state'].scan.metadata
     tilt = None if args['state'].tilt is None else args['state'].tilt.reshape(-1, 2)
     patterns = args['data'].patterns.reshape(-1, *args['data'].patterns.shape[-2:])
 
@@ -97,11 +101,19 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
         logger.info(f"Dropping {n}/{patterns.shape[0]} patterns which are at least {props.threshold:.1%} NaN values")
         patterns = patterns[~mask]
 
-        if scan.shape[0] == xp.size(mask):
+        if scan_pos.shape[0] == xp.size(mask):
             # apply mask to scan as well
-            scan = scan[~mask]
-        elif scan.shape[0] != patterns.shape[0]:
-            raise ValueError(f"# of scan positions {scan.shape[0]} doesn't match # of patterns"
+            scan_pos = scan_pos[~mask]
+            if scan_meta['type'] == 'raster':
+                rows = scan_meta['rows'].reshape(-1, 1)
+                cols = scan_meta['cols'].reshape(-1, 1)
+                scan_meta['rows'] = rows[~mask]
+                scan_meta['cols'] = cols[~mask]
+                assert scan_meta['rows'].shape[0] == scan_pos.shape[0], f"After filtering, # of scan positions {scan_pos.shape[0]} doesn't match # of rows/cols {scan_meta['rows'].shape[0]}"
+            else:
+                logger.info("Not raster scan, not updating scan metadata rows/cols")
+        elif scan_pos.shape[0] != patterns.shape[0]:
+            raise ValueError(f"# of scan positions {scan_pos.shape[0]} doesn't match # of patterns"
                              f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
         # otherwise, we assume the mask has already been applied to the scan
 
@@ -112,7 +124,9 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
                 raise ValueError(f"# of tilt positions {tilt.shape[0]} doesn't match # of patterns"
                                 f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
 
-    args['state'].scan = scan
+    args['state'].scan.data = scan_pos
+    args['state'].scan.metadata = scan_meta
+
     args['state'].tilt = tilt
     args['data'].patterns = patterns
 

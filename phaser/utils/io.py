@@ -8,8 +8,9 @@ import h5py
 
 from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.object import ObjectSampling
-from phaser.state import ReconsState, IterState, ProbeState, ObjectState, ProgressState, PartialReconsState
+from phaser.state import ReconsState, IterState, ProbeState, ScanState, ObjectState, ProgressState, PartialReconsState
 
+## FIXME: scan metadata format not yet finalized
 
 HdfLike: t.TypeAlias = t.Union[h5py.File, str, Path]
 OpenMode: t.TypeAlias = t.Literal['r', 'r+', 'w', 'w-', 'x', 'a']
@@ -106,7 +107,8 @@ def hdf5_read_state(file: HdfLike) -> PartialReconsState:
     probe = hdf5_read_probe_state(_assert_group(file['probe'])) if 'probe' in file else None
     obj = hdf5_read_object_state(_assert_group(file['object'])) if 'object' in file else None
     iter = hdf5_read_iter_state(_assert_group(file['iter'])) if 'iter' in file else IterState.empty()
-    scan = numpy.asarray(_hdf5_read_dataset(file, 'scan', numpy.float64)) if 'scan' in file else None
+    scan = hdf5_read_scan_state(_assert_group(file['scan'])) if 'scan' in file else None
+    # scan = numpy.asarray(_hdf5_read_dataset(file, 'scan', numpy.float64)) if 'scan' in file else None
     tilt = numpy.asarray(_hdf5_read_dataset(file, 'tilt', numpy.float64)) if 'tilt' in file else None
 
     if tilt is not None and scan is not None:
@@ -131,6 +133,15 @@ def hdf5_read_probe_state(group: h5py.Group) -> ProbeState:
         data=probes
     )
 
+def hdf5_read_scan_state(group: h5py.Group) -> ScanState:
+    scan = _hdf5_read_dataset(group, 'data', numpy.floating)
+    assert scan.ndim == 2
+
+    ## TODO: read metadata properly from whatever write_scan_state does
+    return ScanState(
+        data=scan,
+        metadata={}
+    )
 
 def hdf5_read_object_state(group: h5py.Group) -> ObjectState:
     obj = numpy.asarray(_hdf5_read_dataset(group, 'data', numpy.complexfloating))
@@ -199,7 +210,8 @@ def hdf5_write_state(state: t.Union[ReconsState, PartialReconsState], file: HdfL
     if state.object is not None:
         hdf5_write_object_state(state.object, file.create_group("object"))
     if state.scan is not None:
-        file.create_dataset('scan', data=to_numpy(state.scan).astype(numpy.float64))
+        hdf5_write_scan_state(state.scan, file.create_group("scan"))
+        # file.create_dataset('scan', data=to_numpy(state.scan.astype(numpy.float64)))
     if state.tilt is not None:
         file.create_dataset('tilt', data=to_numpy(state.tilt).astype(numpy.float64))
     if state.iter is not None:
@@ -214,9 +226,23 @@ def hdf5_write_probe_state(state: ProbeState, group: h5py.Group):
     dataset.dims[0].label = 'mode'
     dataset.dims[1].label = 'y'
     dataset.dims[2].label = 'x'
-
     group.create_dataset('sampling', data=state.sampling.sampling.astype(numpy.float64))
     group.create_dataset('extent', data=state.sampling.extent.astype(numpy.float64))
+
+def hdf5_write_scan_state(state: ScanState, group: h5py.Group):
+    assert state.data.ndim == 2
+    dataset = group.create_dataset('data', data=to_numpy(state.data))
+    dataset.dims[0].label = 'position'
+    dataset.dims[1].label = 'yx'
+
+    metagroup = group.require_group('metadata')
+    for (k, v) in state.metadata.items():
+        metasubgroup = metagroup.require_group(k)
+        ##TODO: directly dump all metadata keys as json? or subclass as rasterscanstate
+        metakey = metasubgroup.create_dataset("data", data=numpy.array(v.iters, dtype=numpy.int64)) 
+
+    # group.create_dataset('sampling', data=state.sampling.sampling.astype(numpy.float64))
+    # group.create_dataset('extent', data=state.sampling.extent.astype(numpy.float64))
 
 
 def hdf5_write_object_state(state: ObjectState, group: h5py.Group):

@@ -8,7 +8,7 @@ from phaser.plan import ConventionalEnginePlan
 from phaser.state import ReconsState, ProgressState
 from phaser.types import process_flag, flag_any_true
 from ..common.simulation import SimulationState, make_propagators, GroupManager
-
+## FIXME: not yet updated for conventional engines
 
 def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     solver = props.solver(props)
     sim = solver.init(sim)
-    groups = GroupManager(sim.state.scan, props.grouping, props.compact, seed=seed)
+    groups = GroupManager(sim.state.scan.data, props.grouping, props.compact, seed=seed)
 
     calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
 
@@ -73,7 +73,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     # runs rescaling
     sim = solver.presolve(
-        sim, groups.iter(sim.state.scan),
+        sim, groups.iter(sim.state.scan.data),
         patterns=patterns, pattern_mask=pattern_mask,
         propagators=propagators
     )
@@ -84,12 +84,12 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     for i in range(1, props.niter+1):
         sim.state.iter.engine_iter = i
         sim.state.iter.total_iter = start_i + i
-
+        
         iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
         iter_shuffle_groups = shuffle_groups({'state': sim.state, 'niter': props.niter})
 
         sim, pos_update, group_errors = solver.run_iteration(
-            sim, groups.iter(sim.state.scan, i, iter_shuffle_groups),
+            sim, groups.iter(sim.state.scan.data, i, iter_shuffle_groups),
             patterns=patterns, pattern_mask=pattern_mask, propagators=propagators,
             update_object=update_object({'state': sim.state, 'niter': props.niter}),
             update_probe=update_probe({'state': sim.state, 'niter': props.niter}),
