@@ -11,7 +11,7 @@ from .hooks.regularization import IterConstraintHook, GroupConstraintHook, CostR
 SaveType: t.TypeAlias = t.Literal[
     'probe', 'probe_mag', 'probe_recip', 'probe_recip_mag',
     'object_phase_stack', 'object_phase_sum',
-    'object_mag_stack', 'object_mag_sum',
+    'object_mag_stack', 'object_mag_sum','scan_update',
     'scan', 'tilt',
 ]
 

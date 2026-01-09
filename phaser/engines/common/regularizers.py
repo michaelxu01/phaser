@@ -16,17 +16,14 @@ from phaser.hooks.regularization import (ScanConstraintProps,
     RegularizeLayersProps, ObjLowPassProps, GaussianProps,
     CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps
 )
-
+#type: t.Literal['affine', 'line'] = 'affine'
+    # weight: float = 1.0
 class ScanConstraint:
     def __init__(self, args: None, props: ScanConstraintProps):
-        self.min: t.Optional[float]
-        self.max: t.Optional[float]
-
-        if isinstance(props.amplitude, list):
-            self.min, self.max = props.amplitude
-        else:
-            self.min = None
-            self.max = props.amplitude
+        self.weight: float = props.weight
+        self.kind: str = props.kind
+        # self.weight: t.Optional[float]
+        # self.type: t.Optional[str]
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -35,33 +32,63 @@ class ScanConstraint:
         return self.apply_iter(sim, state)
 
     def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
-        cast = to_real_dtype(sim.object.data.dtype)
-        sim.object.data = clamp_amplitude(sim.object.data, None if self.min is None else cast(self.min), None if self.max is None else cast(self.max))
+        # cast = to_real_dtype(sim.object.data.dtype)
+        if self.kind == 'affine':
+            sim.scan.data = scan_affine(sim.scan.data, sim.scan.prev_step, self.weight)
+        elif self.kind == 'line':
+            if (sim.scan.metadata.get('type') != 'raster') | (sim.scan.metadata.get('rows') is None):
+                raise ValueError("Line scan constraint cannot be applied to scans without row metadata")
+            # assert type(sim.scan.metadata.get('rows')) is Numeric 
+            sim.scan.data = scan_line(sim.scan.data, sim.scan.prev_step, self.weight, sim.scan.metadata.get('rows'))
         return (sim, None)
 
-
-@partial(jit, donate_argnames=('obj',), cupy_fuse=True)
+## double check that if position update is off (scan == prev_step), this doesn't break anything
+@partial(jit, donate_argnames=('scan',), cupy_fuse=True)
 def scan_affine(
-    obj: NDArray[numpy.complexfloating],
-    min: t.Union[float, numpy.floating, None],
-    max: t.Union[float, numpy.floating, None]
-) -> NDArray[numpy.complexfloating]:
-    xp = get_array_module(obj)
+    scan: NDArray[numpy.floating],
+    prev: NDArray[numpy.floating],
+    weight: t.Union[float, numpy.floating]
+) -> NDArray[numpy.floating]:
+    xp = get_array_module(scan)
 
-    obj_amp = xp.abs(obj)
-    new_amp = obj_amp
+    disp_update = scan - prev
+    ones = xp.ones((scan.shape[0], 1), scan.dtype)
+    pos_prev = xp.concatenate([scan, ones], axis=1)
+    left = xp.matmul(pos_prev.T, disp_update)
+    right = xp.matmul(pos_prev.T, pos_prev)
+    A = xp.matmul(xp.linalg.inv(right), left)
+    constraint =  xp.matmul(pos_prev, A)
+    #remove the middle shift, keep the middle unchanged
+    center_ones = xp.ones((1, 1), scan.dtype)
+    # center[0, 0:2] = xp.average(scan, axis = 0)
+    center = xp.concatenate([xp.average(scan, axis = 0, keepdims=True), center_ones], axis=1)
+    center_shift = xp.matmul(center, A)
+    constraint -= center_shift
+    return prev + (constraint * weight + disp_update * (1 - weight))
 
-    if min is not None and max is not None:
-        new_amp = xp.clip(new_amp, min, max)
-    elif min is not None:
-        new_amp = xp.maximum(new_amp, min)
-    elif max is not None:
-        new_amp = xp.minimum(new_amp, max)
-    else:
-        return obj
-
-    scale = xp.where(obj_amp > 0, new_amp / obj_amp, 0.0) #no divide by 0
-    return obj * scale
+@partial(jit, donate_argnames=('scan',), cupy_fuse=True)
+def scan_line(
+    scan: NDArray[numpy.floating],
+    prev: NDArray[numpy.floating],
+    weight: t.Union[float, numpy.floating],
+    rows: t.Union[t.Any, NDArray[numpy.integer]]
+) -> NDArray[numpy.floating]:
+    xp = get_array_module(scan)
+    
+    disp_update = scan - prev
+    ones = xp.ones((scan.shape[0], 1), scan.dtype)
+    pos_prev = xp.concatenate([scan, ones], axis=1)
+    left = xp.matmul(pos_prev.T, disp_update)
+    right = xp.matmul(pos_prev.T, pos_prev)
+    A = xp.matmul(xp.linalg.inv(right), left)
+    constraint =  xp.matmul(pos_prev, A)
+    #remove the middle shift, keep the middle unchanged
+    center_ones = xp.ones((1, 1), scan.dtype)
+    # center[0, 0:2] = xp.average(scan, axis = 0)
+    center = xp.concatenate([xp.average(scan, axis = 0), center_ones], axis=1)
+    center_shift = xp.matmul(center, A)
+    constraint -= center_shift
+    return prev + (constraint * weight + disp_update * (1 - weight))
 
 class ClampObjectAmplitude:
     def __init__(self, args: None, props: ClampObjectAmplitudeProps):

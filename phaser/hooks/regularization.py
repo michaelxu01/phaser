@@ -33,9 +33,9 @@ class CostRegularizer(HasState[StateT], t.Protocol[StateT]):
         ...
 
 class ScanConstraintProps(Dataclass):
-    type: t.Literal['affine', 'line'] = 'affine'
+    kind: t.Literal['affine', 'line'] = 'affine'
     weight: float = 1.0
-    
+
 class ClampObjectAmplitudeProps(Dataclass):
     amplitude: t.Union[float, t.List[t.Optional[float]]] = 1.1
 

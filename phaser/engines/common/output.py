@@ -12,6 +12,51 @@ from phaser.utils.io import tiff_write_opts, tiff_write_opts_recip
 from phaser.state import ReconsState
 from phaser.plan import SaveOptions
 
+## TODO: move these utility functions to something like utils.plotting
+def interpolate_values(a1, a2, c, d, cutoff=0.5):
+    c = max(c, d*cutoff)
+    c = min(c, d)
+    interpolated_value1 = a1/(1-cutoff)/d*c+a1-a1/(1-cutoff)
+    interpolated_value2 = (a2-1)/(1-cutoff)/d * c + a2 -(a2-1)/(1-cutoff)
+    interpolated_value1 = max(0, min(1, interpolated_value1))
+    interpolated_value2 = max(0, min(1, interpolated_value2))
+    return (interpolated_value1, interpolated_value2)
+
+def grad_to_rgb(angle, absolute, max_abs, offset, SL = False):
+    import matplotlib.colors
+    """Get the rgb value for the given `angle` and the `absolute` value
+    Intended usage: grad = numpy.array(list(map(lambda p, q: grad_to_rgb(p, q, max_abs), deg, mag)))
+
+    Parameters
+    ----------
+    angle : float
+        The angle in radians
+    absolute : float
+        The absolute value of the gradient
+    max_abs : float
+        The maximum value against which all others are normalized (color-wise).
+
+    Returns
+    -------
+    array_like
+        The rgb value as a tuple with values [0..1]
+    """
+
+    # normalize angle
+    angle = (angle + offset) % (2 * numpy.pi)
+    if angle < 0:
+        angle += 2 * numpy.pi
+
+    if SL:
+        # print('specify global max_abs!!!')
+        return matplotlib.colors.hsv_to_rgb((angle / 2 / numpy.pi,
+                                                numpy.where(absolute / max_abs>1, 1, absolute / max_abs),
+                                                numpy.where(absolute / max_abs>1, 1, absolute / max_abs)))
+    else:
+        return matplotlib.colors.hsv_to_rgb((angle / 2 / numpy.pi,
+                                                1,
+                                                1))
+
 
 def output_images(state: ReconsState, out_dir: Path, options: SaveOptions):
     for ty in options.images:
@@ -176,6 +221,38 @@ def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, s
         write_opts['metadata']['axes'] = 'ZYX' if stack else 'YX'
         w.write(obj_mag, **write_opts)
 
+## TODO: refactor using colorize_complex to match tilt implementation
+def _plot_scan_update(state: ReconsState, out_path: Path, options: SaveOptions):
+    from matplotlib import pyplot
+    fig, ax = pyplot.subplots(figsize=(4, 4), dpi=options.plot_dpi, constrained_layout=True)
+    ax.set_aspect(1.)
+    [left, right, bottom, top] = state.object.sampling.mpl_extent()
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
+
+    scan = to_numpy(state.scan.data)
+    # i = numpy.arange(scan[..., 0].size)
+    # ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, cmap='plasma', s=0.5, edgecolors='none')
+
+    scan = to_numpy(state.scan.data)
+    disp = to_numpy(state.scan.data) - to_numpy(state.scan.prev_step)
+    pos_y, pos_x = scan[..., 1].ravel(), scan[..., 0].ravel()
+    dY, dX = disp[..., 1].ravel(), disp[..., 0].ravel()
+
+    deg = -numpy.arctan2(dY, dX)
+    mag = numpy.sqrt(dY ** 2 + dX ** 2)
+    max_abs = numpy.nanmax(mag)
+
+    grad = numpy.array(list(map(lambda p, q: grad_to_rgb(p, q, max_abs, offset=0), deg, mag)))
+
+    width = 0.1
+    # hal = hl = 1. / width * length
+    headwidth = width
+    ax.quiver(pos_y, pos_x, dY, dX, color=grad, angles='xy', units='xy', width=width, edgecolor=None, linewidth=1, pivot='mid', scale_units='xy', scale=.1)
+    # ax.set_axis_off()
+
+    fig.savefig(out_path)
+    pyplot.close(fig)
 
 def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
     from matplotlib import pyplot
@@ -247,7 +324,8 @@ _SAVE_FUNCS: t.Dict[str, t.Callable[[ReconsState, Path, SaveOptions], t.Any]] = 
     'object_mag_stack': partial(_save_object_mag, stack=True),
     'object_mag_sum': partial(_save_object_mag, stack=False),
     'scan': _plot_scan,
+    'scan_update': _plot_scan_update,
     'tilt': _plot_tilt,
 }
 # save functions with special handling of file extensions
-_PLOT_FUNCS: t.Set[str] = {'scan', 'tilt'}
+_PLOT_FUNCS: t.Set[str] = {'scan', 'tilt', 'scan_update'}

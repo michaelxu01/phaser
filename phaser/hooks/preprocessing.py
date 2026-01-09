@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 ## FIXME: the scan flattening is done here, but doesn't safely handle any row or column metadata. 
 ## should the scan be flattened when initialized and metadata generated in raster scan hook flow? 
 
+## TODO: actually test that cropping and dropnans work individually and together
+## crop should be functional? might not be on load? probably just leave it until it becomes an issue
+
 def crop_data(raw_data: RawData, props: CropDataProps) -> RawData:
     if raw_data['patterns'].ndim != 4:
         raise ValueError(f"'crop_data' expects a 4D array of patterns, got shape {raw_data['patterns'].shape} instead")
@@ -89,6 +92,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
     
     # flatten scan, tilt, and patterns
     scan_pos = args['state'].scan.data.reshape(-1, 2)
+    prev_step = args['state'].scan.prev_step.reshape(-1, 2)
     scan_meta = args['state'].scan.metadata
     tilt = None if args['state'].tilt is None else args['state'].tilt.reshape(-1, 2)
     patterns = args['data'].patterns.reshape(-1, *args['data'].patterns.shape[-2:])
@@ -104,6 +108,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
         if scan_pos.shape[0] == xp.size(mask):
             # apply mask to scan as well
             scan_pos = scan_pos[~mask]
+            prev_step = prev_step[~mask]
             if scan_meta['type'] == 'raster':
                 if 'rows' in scan_meta:
                     if scan_meta['rows'].shape[:-1] != args['state'].scan.data.shape[:-1]:
@@ -126,6 +131,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
                                 f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
 
     args['state'].scan.data = scan_pos
+    args['state'].scan.prev_step = prev_step ## check that copy is correct or necessary
     args['state'].scan.metadata = scan_meta
 
     args['state'].tilt = tilt
