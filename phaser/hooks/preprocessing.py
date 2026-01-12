@@ -94,6 +94,9 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
     scan_pos = args['state'].scan.data.reshape(-1, 2)
     prev_step = args['state'].scan.prev_step.reshape(-1, 2)
     scan_meta = args['state'].scan.metadata
+    scan_meta['rows'] = scan_meta['rows'].reshape(-1, 1)
+    scan_meta['cols'] = scan_meta['cols'].reshape(-1, 1)
+
     tilt = None if args['state'].tilt is None else args['state'].tilt.reshape(-1, 2)
     patterns = args['data'].patterns.reshape(-1, *args['data'].patterns.shape[-2:])
 
@@ -113,11 +116,11 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
                 if 'rows' in scan_meta:
                     if scan_meta['rows'].shape[:-1] != args['state'].scan.data.shape[:-1]:
                         raise ValueError("Scan 'rows' metadata shape doesn't match scan data shape")
-                    scan_meta['rows'] = scan_meta['rows'].reshape(-1, 1)[~mask]
+                    scan_meta['rows'] = scan_meta['rows'][~mask]
                 if 'cols' in scan_meta:
                     if scan_meta['cols'].shape[:-1] != args['state'].scan.data.shape[:-1]:
                         raise ValueError("Scan 'cols' metadata shape doesn't match scan data shape")
-                    scan_meta['cols'] = scan_meta['cols'].reshape(-1, 1)[~mask]
+                    scan_meta['cols'] = scan_meta['cols'][~mask]
         elif scan_pos.shape[0] != patterns.shape[0]:
             raise ValueError(f"# of scan positions {scan_pos.shape[0]} doesn't match # of patterns"
                              f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
@@ -130,6 +133,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
                 raise ValueError(f"# of tilt positions {tilt.shape[0]} doesn't match # of patterns"
                                 f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
 
+    print(scan_pos.shape, scan_meta['cols'].shape)
     args['state'].scan.data = scan_pos
     args['state'].scan.prev_step = prev_step ## check that copy is correct or necessary
     args['state'].scan.metadata = scan_meta

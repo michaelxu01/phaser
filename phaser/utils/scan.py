@@ -20,7 +20,7 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,  # pyright:
 
 @t.overload
 def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
-                     rotation: float = 0., affine: t.Union[None, ArrayLike] = None, *, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating]]:
+                     rotation: float = 0., affine: t.Union[None, ArrayLike] = None, *, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.integer], NDArray[numpy.integer]]:
     ...
 
 def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
@@ -50,8 +50,8 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
     pts = xp2.stack(xp2.meshgrid(yy, xx, indexing='ij'), axis=-1)
     pts *= xp2.broadcast_to(xp2.asarray(scan_step, dtype=dtype), (2,))
 
-    yy_ind = xp2.arange(shape[0], dtype=dtype)
-    xx_ind = xp2.arange(shape[1], dtype=dtype)
+    yy_ind = xp2.arange(shape[0])
+    xx_ind = xp2.arange(shape[1])
     grid_inds = xp2.stack(xp2.meshgrid(yy_ind, xx_ind, indexing='ij'), axis=-1)
     yy_grid = grid_inds[..., 0]
     xx_grid = grid_inds[..., 1]
@@ -65,7 +65,7 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
         mat = xp2.asarray([[numpy.cos(theta), -numpy.sin(theta)], [numpy.sin(theta), numpy.cos(theta)]], dtype=dtype)
         pts = (pts @ mat.T)
 
-    return t.cast(NDArray[numpy.number], pts), t.cast(NDArray[numpy.number], yy_grid), t.cast(NDArray[numpy.number], xx_grid)
+    return t.cast(NDArray[numpy.number], pts), t.cast(NDArray[numpy.integer], yy_grid), t.cast(NDArray[numpy.integer], xx_grid)
 
 # @tree_dataclass(frozen=True, init=False)
 # class RasterScanMetadata:

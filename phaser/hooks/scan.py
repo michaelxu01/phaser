@@ -33,7 +33,7 @@ def raster_scan(args: ScanHookArgs, props: RasterScanProps) -> ScanState:
         props.shape, step_size, rot, affine,
         dtype=args['dtype'], xp=xp,
     )
-
+    print(rows.dtype)
     logger.info(f"Generated scan with {scan_pos.shape[0]}x{scan_pos.shape[1]}={scan_pos.shape[0]*scan_pos.shape[1]} positions.")
     logger.info(f"Accompanying scan metadata: type 'raster', {rows.shape} rows (y), {cols.shape} cols (x).")
     return ScanState(data = scan_pos, 

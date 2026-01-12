@@ -91,7 +91,6 @@ class EarlyTermination(BaseException):
 class Dataclass(pane.PaneBase, kw_only=True, allow_extra=False):
     ...
 
-
 class SliceList(Dataclass):
     thicknesses: t.List[float]
 

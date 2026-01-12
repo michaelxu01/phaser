@@ -289,3 +289,5 @@ class PreparedRecons:
             observers.extend(observer)
 
         return self.__class__(self.patterns, self.state, self.name, ObserverSet(observers))
+    
+
