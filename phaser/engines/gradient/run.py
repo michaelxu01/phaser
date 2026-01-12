@@ -114,7 +114,7 @@ def apply_update(state: ReconsState, update: t.Dict[ReconsVar, numpy.ndarray]) -
         # subtract mean position update
         xp = get_array_module(update['positions'])
         update['positions'] -= xp.mean(update['positions'], tuple(range(update['positions'].ndim - 1)))
-        state.scan.prev_step = state.scan.data # check that this functions correctly. positions should be only a per-iteration solver
+        # state.scan.prev_step = state.scan.data # check that this functions correctly. positions should be only a per-iteration solver
         # print(f"{state.scan.data.shape} {update['positions'].shape}")
         state.scan.data += update['positions']
 

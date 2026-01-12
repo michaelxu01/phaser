@@ -25,22 +25,29 @@ class ScanConstraint:
         # self.weight: t.Optional[float]
         # self.type: t.Optional[str]
 
-    def init_state(self, sim: ReconsState) -> None:
-        return None
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.floating]:
+        ## init the original scan positions
+        return sim.scan.data.copy() ## copy not needed for jax, but needed for others? 
 
-    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: NDArray[numpy.floating]) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
         return self.apply_iter(sim, state)
 
-    def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+    ## TODO: more formally handle applying both affine and line simultaneously
+    ## I think probably for 'kind' can give a list of constraints to apply, even not in order. and here it will handle it in the best sequence
+    ## this preserves state better, though the dictionary of the state might be more complicated
+    def apply_iter(self, sim: ReconsState, state: NDArray[numpy.floating]) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
         # cast = to_real_dtype(sim.object.data.dtype)
         if self.kind == 'affine':
-            sim.scan.data = scan_affine(sim.scan.data, sim.scan.prev_step, self.weight)
-        elif self.kind == 'line':
+            sim.scan.data = scan_affine(sim.scan.data, state, self.weight)
+            # sims.object.data = ## affine deform object 
+        if self.kind == 'line':
             if (sim.scan.metadata.get('type') != 'raster') | (sim.scan.metadata.get('rows') is None):
                 raise ValueError("Line scan constraint cannot be applied to scans without row metadata")
             # assert type(sim.scan.metadata.get('rows')) is Numeric 
-            sim.scan.data = scan_line(sim.scan.data, sim.scan.prev_step, self.weight, sim.scan.metadata.get('rows'))
-        return (sim, None)
+            sim.scan.data = scan_line(sim.scan.data, state, self.weight, sim.scan.metadata.get('rows'))
+
+        state = sim.scan.data.copy()
+        return (sim, state)
 
 ## double check that if position update is off (scan == prev_step), this doesn't break anything
 @partial(jit, donate_argnames=('scan',), cupy_fuse=True)
@@ -75,19 +82,41 @@ def scan_line(
 ) -> NDArray[numpy.floating]:
     xp = get_array_module(scan)
     
-    disp_update = scan - prev
-    ones = xp.ones((scan.shape[0], 1), scan.dtype)
-    pos_prev = xp.concatenate([scan, ones], axis=1)
-    left = xp.matmul(pos_prev.T, disp_update)
-    right = xp.matmul(pos_prev.T, pos_prev)
-    A = xp.matmul(xp.linalg.inv(right), left)
-    constraint =  xp.matmul(pos_prev, A)
-    #remove the middle shift, keep the middle unchanged
-    center_ones = xp.ones((1, 1), scan.dtype)
-    # center[0, 0:2] = xp.average(scan, axis = 0)
-    center = xp.concatenate([xp.average(scan, axis = 0), center_ones], axis=1)
-    center_shift = xp.matmul(center, A)
-    constraint -= center_shift
+    #     >>> import numpy
+# >>> rows = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,]
+# >>> rows = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]
+# >>> numpy.bincount(rows, [0., 0., 0., 1., 1., 1., 1., 2., 2., 2., 2., 3., 4.])
+# array([1., 5., 9., 4.])
+# >>> numpy.bincount(rows, [0., 0., 0., 1., 1., 1., 1., 2., 2., 2., 2., 3., 4.]) / numpy.bincount(rows)
+# array([0.25, 1.25, 2.25, 4.  ])
+# >>> x_shifts = [0., 0., 0., 1., 1., 1., 1., 2., 2., 2., 2., 3., 4.]
+# >>> x_shifts = numpy.array([0., 0., 0., 1., 1., 1., 1., 2., 2., 2., 2., 3., 4.])
+# >>> x_shifts[rows]
+# array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.])
+# >>> x_shifts[rows]
+# KeyboardInterrupt
+# >>> (numpy.bincount(rows, [0., 0., 0., 1., 1., 1., 1., 2., 2., 2., 2., 3., 4.]) / numpy.bincount(rows))[rows]
+# array([0.25, 0.25, 0.25, 0.25, 1.25, 1.25, 1.25, 1.25, 2.25, 2.25, 2.25,
+#        2.25, 4.  ])
+
+    # disp_update = scan - prev
+    # ones = xp.ones((scan.shape[0], 1), scan.dtype)
+    # pos_prev = xp.concatenate([scan, ones], axis=1)
+    # left = xp.matmul(pos_prev.T, disp_update)
+    # right = xp.matmul(pos_prev.T, pos_prev)
+    # A = xp.matmul(xp.linalg.inv(right), left)
+    # constraint =  xp.matmul(pos_prev, A)
+    # #remove the middle shift, keep the middle unchanged
+    # center_ones = xp.ones((1, 1), scan.dtype)
+    # # center[0, 0:2] = xp.average(scan, axis = 0)
+    # center = xp.concatenate([xp.average(scan, axis = 0), center_ones], axis=1)
+    # center_shift = xp.matmul(center, A)
+    # constraint -= center_shift
+    row = int(xp.sqrt(scan_pos.shape[0]))
+    col = int(scan_pos.shape[0]/row)
+    constraint = np.zeros_like(disp_val)
+    for i in range(row):
+        constraint[i*col:(i+1)*col]= np.average(disp_val[i*col:(i+1)*col], axis=0)
     return prev + (constraint * weight + disp_update * (1 - weight))
 
 class ClampObjectAmplitude:
