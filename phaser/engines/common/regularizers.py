@@ -30,6 +30,9 @@ class ScanUpdate(t.NamedTuple):
 #type: t.Literal['affine', 'line'] = 'affine'
     # weight: float = 1.0
 class ScanConstraint:
+    """See ref for details:
+    S. Ning, W. Xu, L. Loh, Z. Lu, M. Bosman, F. Zhang, Q. He, An integrated constrained gradient descent (iCGD) protocol to correct scan-positional errors for electron ptychography with high accuracy and precision. Ultramicroscopy 248, 113716 (2023).
+    """
     def __init__(self, args: None, props: ScanConstraintProps):
         self.valid_kinds: t.Set[str] = {'affine', 'line', 'hpf', 'lpf', 'default'}
         self.constraints: t.Dict[str, float] = {} #= {'default': 1.0}
