@@ -113,7 +113,7 @@ def hdf5_read_state(file: HdfLike) -> PartialReconsState:
     tilt = numpy.asarray(_hdf5_read_dataset(file, 'tilt', numpy.float64)) if 'tilt' in file else None
 
     if tilt is not None and scan is not None:
-        assert tilt.shape == scan.shape
+        assert tilt.shape == scan.data.shape
     progress = hdf5_read_progress_state(_assert_group(file['progress'])) if 'progress' in file else None
 
     return PartialReconsState(
@@ -134,14 +134,36 @@ def hdf5_read_probe_state(group: h5py.Group) -> ProbeState:
         data=probes
     )
 
+# if this is called, already assumed that scan is state and contains metadata group
 def hdf5_read_scan_state(group: h5py.Group) -> ScanState:
     scan = _hdf5_read_dataset(group, 'data', numpy.floating)
     assert scan.ndim == 2
+    initial = _hdf5_read_dataset(group, 'initial_scan', numpy.floating)
+    assert initial.ndim == 2
+    
+    meta_d: t.Dict[str, t.Any] = {}
+    # iterate to find
+    for (k, subgroup) in group.items():
+        if not isinstance(subgroup, h5py.Group):
+            continue
+        elif k == 'metadata':
+            scan_type = _hdf5_read_string(subgroup, 'type')
+            meta_d['type'] = scan_type
 
-    ## TODO: read metadata properly from whatever write_scan_state does
+            if scan_type == 'raster':
+                rows = _hdf5_read_dataset(subgroup, 'rows', numpy.integer)
+                assert rows.ndim == 2
+                cols = _hdf5_read_dataset(subgroup, 'cols', numpy.integer)
+                assert rows.ndim == 2
+
+                meta_d['rows'] = rows
+                meta_d['cols'] = cols
+            else:
+                continue
+
     return ScanState(
-        data=scan,
-        metadata={}
+        data=scan, initial_scan=initial,
+        metadata=meta_d
     )
 
 def hdf5_read_object_state(group: h5py.Group) -> ObjectState:
@@ -198,7 +220,7 @@ def hdf5_read_progress_state(group: h5py.Group) -> t.Dict[str, ProgressState]:
         d[k] = ProgressState(iters.tolist(), values.tolist())
 
     return d
-
+    
 
 def hdf5_write_state(state: t.Union[ReconsState, PartialReconsState], file: HdfLike):
     file = open_hdf5(file, 'w')  # overwrite if existing
@@ -233,6 +255,9 @@ def hdf5_write_probe_state(state: ProbeState, group: h5py.Group):
 def hdf5_write_scan_state(state: ScanState, group: h5py.Group):
     assert state.data.ndim == 2
     dataset = group.create_dataset('data', data=to_numpy(state.data))
+    dataset.dims[0].label = 'position'
+    dataset.dims[1].label = 'yx'
+    dataset = group.create_dataset('initial', data=to_numpy(state.initial_scan))
     dataset.dims[0].label = 'position'
     dataset.dims[1].label = 'yx'
 

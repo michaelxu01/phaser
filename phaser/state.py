@@ -144,7 +144,7 @@ class ScanState:
     # """Object coordinate system. See `ObjectSampling` for more details."""
     data: NDArray[numpy.floating]
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
-    prev_step: NDArray[numpy.floating]
+    initial_scan: NDArray[numpy.floating]
     """Previous step Scan coordinates (y, x), in length units. Shape (..., 2)"""
     metadata: t.Dict[str, t.Any]
     """Scan row positions (y), in length units. Shape (...)"""
@@ -154,14 +154,14 @@ class ScanState:
     def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
             xp.asarray(self.data),  
-            xp.asarray(self.prev_step),          
+            xp.asarray(self.initial_scan),          
             self.metadata,
         )
 
     def to_numpy(self) -> Self:
         return self.__class__(
             to_numpy(self.data), 
-            to_numpy(self.prev_step),
+            to_numpy(self.initial_scan),
             self.metadata,
         )
 

@@ -92,7 +92,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
     
     # flatten scan, tilt, and patterns
     scan_pos = args['state'].scan.data.reshape(-1, 2)
-    prev_step = args['state'].scan.prev_step.reshape(-1, 2)
+    prev_step = args['state'].scan.initial_scan.reshape(-1, 2)
     scan_meta = args['state'].scan.metadata
     scan_meta['rows'] = scan_meta['rows'].reshape(-1, 1)
     scan_meta['cols'] = scan_meta['cols'].reshape(-1, 1)
@@ -135,7 +135,7 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
 
     print(scan_pos.shape, scan_meta['cols'].shape)
     args['state'].scan.data = scan_pos
-    args['state'].scan.prev_step = prev_step ## check that copy is correct or necessary
+    args['state'].scan.initial_scan = prev_step ## check that copy is correct or necessary
     args['state'].scan.metadata = scan_meta
 
     args['state'].tilt = tilt
