@@ -138,7 +138,7 @@ def hdf5_read_probe_state(group: h5py.Group) -> ProbeState:
 def hdf5_read_scan_state(group: h5py.Group) -> ScanState:
     scan = _hdf5_read_dataset(group, 'data', numpy.floating)
     assert scan.ndim == 2
-    initial = _hdf5_read_dataset(group, 'initial_scan', numpy.floating)
+    initial = _hdf5_read_dataset(group, 'initial', numpy.floating)
     assert initial.ndim == 2
     
     meta_d: t.Dict[str, t.Any] = {}
