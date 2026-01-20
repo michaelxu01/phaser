@@ -37,7 +37,6 @@ class ScanConstraintProps(Dataclass):
     line: float = 0.0
     hpf: float = 0.0
     lpf: float = 0.0
-    default: float = 1.0
     
 class ClampObjectAmplitudeProps(Dataclass):
     amplitude: t.Union[float, t.List[t.Optional[float]]] = 1.1

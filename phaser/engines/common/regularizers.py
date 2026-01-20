@@ -27,15 +27,25 @@ class ScanConstraint:
     S. Ning, W. Xu, L. Loh, Z. Lu, M. Bosman, F. Zhang, Q. He, An integrated constrained gradient descent (iCGD) protocol to correct scan-positional errors for electron ptychography with high accuracy and precision. Ultramicroscopy 248, 113716 (2023).
     """
     def __init__(self, args: None, props: ScanConstraintProps):
-        self.valid_kinds: t.Set[str] = {'affine', 'line', 'hpf', 'lpf', 'default'}
+        self.valid_kinds: t.Set[str] = {'affine', 'line', 'hpf', 'lpf'}
         self.constraints: t.Dict[str, float] = {} #= {'default': 1.0}
 
+        total_constraint_weight = 0
         for kind in self.valid_kinds:
             if getattr(props, kind) > 0:
-                self.constraints[kind] = getattr(props, kind) 
-        self.total_weight = sum(self.constraints.values())
+                val = getattr(props, kind) 
+                self.constraints[kind] = val
 
-        logger.info(f"Initialized scan constraint with kinds {list(self.constraints.keys())} and weights {list(self.constraints.values())} with total weight {self.total_weight:.4f}")
+                total_constraint_weight += val
+
+        if total_constraint_weight > 1.0:
+            raise ValueError("Sum of scan constraint weights cannot exceed 1.0")
+        
+        self.constraints['default'] = 1-total_constraint_weight
+        
+        # self.total_weight = sum(self.constraints.values())
+
+        logger.info(f"Initialized scan constraint with kinds {list(self.constraints.keys())} and weights {list(self.constraints.values()):.4f}")
     
     def init_state(self, sim: ReconsState) -> ScanUpdate:
         if 'line' in self.constraints:
@@ -54,7 +64,6 @@ class ScanConstraint:
         xp = get_array_module(sim.scan.data)
         update = xp.zeros_like(sim.scan.data, dtype=sim.scan.data.dtype)
         for kind, weight in self.constraints.items():
-            weight = weight / self.total_weight
             match kind:
                 case 'affine':
                     update += _scan_affine(sim.scan.data, state.previous) * weight
