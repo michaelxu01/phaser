@@ -86,7 +86,7 @@ class LSQMLSolver(ConventionalSolver):
 
         new_obj_mag = xp.zeros_like(self.obj_mag)
         new_probe_mag = xp.zeros_like(self.probe_mag)
-        pos_update = xp.zeros_like(sim.state.scan, dtype=sim.dtype)
+        pos_update = xp.zeros_like(sim.state.scan.data, dtype=sim.dtype)
         iter_errors = []
 
         for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups, patterns, xp=xp,
@@ -345,7 +345,7 @@ class EPIESolver(ConventionalSolver):
         xp = sim.xp
 
         # TODO: ePIE position update
-        pos_update = xp.zeros_like(sim.state.scan)
+        pos_update = xp.zeros_like(sim.state.scan.data)
         iter_errors = []
 
         beta_object = process_schedule(self.plan.beta_object)({'state': sim.state, 'niter': self.engine_plan.niter})

@@ -100,8 +100,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         )
         assert_dtype(sim.state.object.data, cdtype)
         assert_dtype(sim.state.probe.data, cdtype)
-        ## FIXME: can this apply iter constraints be moved after the position update?
-        sim = sim.apply_iter_constraints()
 
         if iter_update_positions:
             if not position_solver:
@@ -115,13 +113,15 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
             pos_update_rms = float(xp.mean(xp.linalg.norm(pos_update, axis=-1, keepdims=True)))
             logger.info(f"Position update: mean {pos_update_rms}")
             sim.state.scan.data += pos_update
-            assert_dtype(sim.state.scan, dtype)
+            assert_dtype(sim.state.scan.data, dtype)
 
             # check positions are at least overlapping object
-            sim.state.object.sampling.check_scan(sim.state.scan, sim.state.probe.sampling.extent / 2.)
+            sim.state.object.sampling.check_scan(sim.state.scan.data, sim.state.probe.sampling.extent / 2.)
 
             progress['pos_update_rms'].iters.append(i + start_i)
             progress['pos_update_rms'].values.append(pos_update_rms)
+
+        sim = sim.apply_iter_constraints()
 
         error = None
         if group_errors is not None and len(group_errors):
