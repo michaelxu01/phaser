@@ -124,7 +124,6 @@ def _normalize_observers(
 
     return ObserverSet(obs)
 
-## FIXME: the scan normalization here - happens before dropnans and scan data flattening, but may alter shape and therefore rows/cols? why is this needed
 def _normalize_scan_shape(
     patterns: Patterns, state: ReconsState
 ) -> t.Tuple[Patterns, ReconsState]:
@@ -149,7 +148,7 @@ def _normalize_scan_shape(
     patterns.patterns = patterns.patterns.reshape((*new_shape, *patterns.patterns.shape[-2:]))
     state.scan.data = state.scan.data.reshape((*new_shape, 2))
 
-    ## FIXME: check that this functions as intended, mainly when loading .h5 files and not applying dropnans
+    ## TODO: check that this functions as intended, mainly when loading .h5 files and not applying dropnans
     if 'raster' == state.scan.metadata.get('type'):
         if 'rows' in state.scan.metadata:
             state.scan.metadata['rows'] = state.scan.metadata['rows'].reshape((*new_shape, 1))

@@ -13,8 +13,6 @@ if t.TYPE_CHECKING:
     from phaser.utils.image import _InterpBoundaryMode
     from phaser.observer import Observer, ObserverSet
 
-## FIXME: scan metadata format not yet finalized, but scanstate object and references here are updated
-
 @tree_dataclass
 class Patterns():
     patterns: NDArray[numpy.floating]
