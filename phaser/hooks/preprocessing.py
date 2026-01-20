@@ -14,9 +14,6 @@ from . import RawData, PostInitArgs, PoissonProps, ScaleProps, DropNanProps, Cro
 
 logger = logging.getLogger(__name__)
 
-## FIXME: the scan flattening is done here, but doesn't safely handle any row or column metadata. 
-## should the scan be flattened when initialized and metadata generated in raster scan hook flow? 
-
 ## TODO: actually test that cropping and dropnans work individually and together
 ## crop should be functional? might not be on load? probably just leave it until it becomes an issue
 
@@ -88,7 +85,6 @@ def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
 
 def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patterns, ReconsState]:
     xp = get_array_module(args['data'].patterns)
-    ## FIXME: should the scan be flattened to begin with? is there any situation where we don't want that?
     
     # flatten scan, tilt, and patterns
     scan_pos = args['state'].scan.data.reshape(-1, 2)

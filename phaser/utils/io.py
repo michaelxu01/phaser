@@ -10,9 +10,6 @@ from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.object import ObjectSampling
 from phaser.state import ReconsState, IterState, ProbeState, ScanState, ObjectState, ProgressState, PartialReconsState
 
-## FIXME: scan metadata format somewhat finalized, though clunky. 
-## TODO: h5 read function for scan state. should be a conditional and check if scan is a group with metadata, or dataset only
-
 HdfLike: t.TypeAlias = t.Union[h5py.File, str, Path]
 OpenMode: t.TypeAlias = t.Literal['r', 'r+', 'w', 'w-', 'x', 'a']
 DTypeT = t.TypeVar('DTypeT', bound=numpy.generic)

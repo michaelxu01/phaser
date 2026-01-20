@@ -231,8 +231,6 @@ def _plot_scan_update(state: ReconsState, out_path: Path, options: SaveOptions):
     ax.set_ylim(bottom, top)
 
     scan = to_numpy(state.scan.data)
-    # i = numpy.arange(scan[..., 0].size)
-    # ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, cmap='plasma', s=0.5, edgecolors='none')
 
     scan = to_numpy(state.scan.data)
     disp = to_numpy(state.scan.data) - to_numpy(state.scan.initial_scan)
