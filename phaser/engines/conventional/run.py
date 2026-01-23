@@ -8,7 +8,6 @@ from phaser.plan import ConventionalEnginePlan
 from phaser.state import ReconsState, ProgressState
 from phaser.types import process_flag, flag_any_true
 from ..common.simulation import SimulationState, make_propagators, GroupManager
-## FIXME: not yet updated for conventional engines
 
 def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     logger = logging.getLogger(__name__)

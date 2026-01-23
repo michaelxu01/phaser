@@ -20,10 +20,19 @@ from phaser.hooks.regularization import (ScanConstraintProps,
 logger = logging.getLogger(__name__)
 
 class ScanUpdate(t.NamedTuple):
+    """
+    Scan update object for holding the scan constraint row index and previous position arrays
+    """
     previous: numpy.typing.NDArray[numpy.floating]
     row_bins: t.Optional[numpy.typing.NDArray[numpy.integer]] = None
 class ScanConstraint:
-    """See ref for details:
+    """
+    Constraints for the scan position updates. 
+    This per iteration regularizer takes the unconstrained position updates and applies a 
+    weighted average of its affine, line (row) averaged, high pass filtered, or low pass filtered components.
+    Currently, only the affine and line averaged constraints are implemented. 
+
+    See ref for details:
     S. Ning, W. Xu, L. Loh, Z. Lu, M. Bosman, F. Zhang, Q. He, An integrated constrained gradient descent (iCGD) protocol to correct scan-positional errors for electron ptychography with high accuracy and precision. Ultramicroscopy 248, 113716 (2023).
     """
     def __init__(self, args: None, props: ScanConstraintProps):
@@ -86,12 +95,32 @@ def _scan_default(
     pos: NDArray[numpy.floating],
     prev: NDArray[numpy.floating],
 ) -> NDArray[numpy.floating]:
+    """
+    Pass through function for calculating the scan update from final and initial scan positions.
+    
+    :param pos: N x 2 array of unconstrained updated scan positions
+    :type pos: NDArray[numpy.floating]
+    :param prev: N x 2 array of scan positions, before update (previous iteration)
+    :type prev: NDArray[numpy.floating]
+    :return: N x 2 array of updates to the scan positions
+    :rtype: NDArray[floating[Any]]
+    """
     return pos - prev
 
 def _scan_affine(
     pos: NDArray[numpy.floating],
     prev: NDArray[numpy.floating],
 ) -> NDArray[numpy.floating]:
+    """
+    Calculates and returns the affine component of the update between final and initial scan positions. 
+    
+    :param pos: N x 2 array of unconstrained updated scan positions
+    :type pos: NDArray[numpy.floating]
+    :param prev: N x 2 array of scan positions, before update (previous iteration)
+    :type prev: NDArray[numpy.floating]
+    :return: N x 2 array of updates to the scan positions (affine only)
+    :rtype: NDArray[floating[Any]]
+    """
     xp = get_array_module(pos)
 
     disp_update = pos - prev
@@ -113,6 +142,18 @@ def _scan_line(
     prev: NDArray[numpy.floating],
     rows: NDArray[numpy.integer],
 ) -> NDArray[numpy.floating]:
+    """
+    Calculates and returns a line (row) averaged update from the unconstrained final and initial scan positions. 
+    
+    :param pos: N x 2 array of unconstrained updated scan positions
+    :type pos: NDArray[numpy.floating]
+    :param prev: N x 2 array of scan positions, before update (previous iteration)
+    :type prev: NDArray[numpy.floating]
+    :param rows: an array of row indices corresponding to the N positions given by pos and prev
+    :type rows: NDArray[numpy.integer]
+    :return: N x 2 array of updates to the scan positions (row averaged)
+    :rtype: NDArray[floating[Any]]
+    """
     xp = get_array_module(pos)
 
     disp_val = pos - prev
