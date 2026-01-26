@@ -54,7 +54,7 @@ class ScanConstraint:
         
         # self.total_weight = sum(self.constraints.values())
 
-        logger.info(f"Initialized scan constraint with kinds {list(self.constraints.keys())} and weights {list(self.constraints.values()):.4f}")
+        logger.info(f"Initialized scan constraint with kinds {list(self.constraints.keys())} and weights {list(self.constraints.values())}")
     
     def init_state(self, sim: ReconsState) -> ScanUpdate:
         if 'line' in self.constraints:
