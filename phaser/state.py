@@ -1,5 +1,4 @@
 import typing as t
-
 import numpy
 from numpy.typing import NDArray
 from typing_extensions import Self
@@ -138,16 +137,12 @@ class ProgressState:
 
 @tree_dataclass(static_fields=('metadata',))
 class ScanState:
-    # sampling: ObjectSampling
-    # """Object coordinate system. See `ObjectSampling` for more details."""
     data: NDArray[numpy.floating]
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     initial_scan: NDArray[numpy.floating]
-    """Previous step Scan coordinates (y, x), in length units. Shape (..., 2)"""
-    metadata: t.Dict[str, t.Any]
-    """Scan row positions (y), in length units. Shape (...)"""
-    # cols: NDArray[numpy.floating]
-    # """Scan column positions (x), in length units. Shape (...)"""
+    """Initial scan coordinates (y, x), in length units. Shape (..., 2)"""
+    metadata: t.Union[t.Dict[str, t.Any], str]
+    """Metadata dictionary. Contains scan type and other info, such as rows and cols for raster scan positions"""
 
     def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
@@ -175,7 +170,6 @@ class ReconsState:
     probe: ProbeState
     object: ObjectState
     scan: ScanState #NDArray[numpy.floating]
-    """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     tilt: t.Optional[NDArray[numpy.floating]] = None
     """Tilt angles (y, x) per scan position, in mrad. Shape (..., 2)"""
     progress: t.Dict[str, ProgressState] = field(default_factory=dict)
@@ -224,7 +218,6 @@ class PartialReconsState:
     probe: t.Optional[ProbeState] = None
     object: t.Optional[ObjectState] = None
     scan: t.Optional[ScanState] = None
-    """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     tilt: t.Optional[NDArray[numpy.floating]] = None
     progress: t.Optional[t.Dict[str, ProgressState]] = None
 

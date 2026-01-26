@@ -151,9 +151,13 @@ def _normalize_scan_shape(
     ## TODO: check that this functions as intended, mainly when loading .h5 files and not applying dropnans
     if 'raster' == state.scan.metadata.get('type'):
         if 'rows' in state.scan.metadata:
-            state.scan.metadata['rows'] = state.scan.metadata['rows'].reshape((*new_shape, 1))
+            if isinstance(state.scan.metadata.get('rows'), list):
+                state.scan.metadata['rows'] = numpy.array(state.scan.metadata.get('rows'), dtype=numpy.integer)
+            state.scan.metadata['rows'] = (state.scan.metadata['rows']).reshape((*new_shape, 1))
         if 'cols' in state.scan.metadata:
-            state.scan.metadata['cols'] = state.scan.metadata['cols'].reshape((*new_shape, 1))
+            if isinstance(state.scan.metadata.get('cols'), list):
+                state.scan.metadata['cols'] = numpy.array(state.scan.metadata.get('cols'), dtype=numpy.integer)
+            state.scan.metadata['cols'] = (state.scan.metadata['cols']).reshape((*new_shape, 1))
 
     if state.tilt is not None:
         n_tilt = math.prod(state.tilt.shape[:-1])

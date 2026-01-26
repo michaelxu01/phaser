@@ -1,10 +1,12 @@
 import contextlib
 from pathlib import Path
 import typing as t
-
+import json
+# import pane
 import numpy
 from numpy.typing import NDArray
 import h5py
+from phaser.utils.tree import map
 
 from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.object import ObjectSampling
@@ -138,25 +140,7 @@ def hdf5_read_scan_state(group: h5py.Group) -> ScanState:
     initial = _hdf5_read_dataset(group, 'initial', numpy.floating)
     assert initial.ndim == 2
     
-    meta_d: t.Dict[str, t.Any] = {}
-    # iterate to find
-    for (k, subgroup) in group.items():
-        if not isinstance(subgroup, h5py.Group):
-            continue
-        elif k == 'metadata':
-            scan_type = _hdf5_read_string(subgroup, 'type')
-            meta_d['type'] = scan_type
-
-            if scan_type == 'raster':
-                rows = _hdf5_read_dataset(subgroup, 'rows', numpy.integer)
-                assert rows.ndim == 2
-                cols = _hdf5_read_dataset(subgroup, 'cols', numpy.integer)
-                assert rows.ndim == 2
-
-                meta_d['rows'] = rows
-                meta_d['cols'] = cols
-            else:
-                continue
+    meta_d = json.loads(_hdf5_read_string(group, 'metadata'))
 
     return ScanState(
         data=scan, initial_scan=initial,
@@ -250,26 +234,17 @@ def hdf5_write_probe_state(state: ProbeState, group: h5py.Group):
     group.create_dataset('extent', data=state.sampling.extent.astype(numpy.float64))
 
 def hdf5_write_scan_state(state: ScanState, group: h5py.Group):
+    state = state.to_numpy()
     assert state.data.ndim == 2
-    dataset = group.create_dataset('data', data=to_numpy(state.data))
+    dataset = group.create_dataset('data', data=state.data)
     dataset.dims[0].label = 'position'
     dataset.dims[1].label = 'yx'
-    dataset = group.create_dataset('initial', data=to_numpy(state.initial_scan))
+    dataset = group.create_dataset('initial', data=state.initial_scan)
     dataset.dims[0].label = 'position'
     dataset.dims[1].label = 'yx'
+    meta_to_dump = map(lambda v: to_numpy(v).tolist() if hasattr(v, '__array_priority__') else v, state.metadata)
 
-    metagroup = group.require_group('metadata')    
-    for (k, v) in state.metadata.items():
-        # metasubgroup = metagroup.require_group(k)
-        ##TODO: directly dump all metadata keys as json? or subclass as rasterscanstate
-        # if isinstance(v, str):
-        metakey = metagroup.create_dataset(k, data=v)
-        # else:
-            # metakey = metagroup.create_dataset(k, data=v)) 
-
-    # group.create_dataset('sampling', data=state.sampling.sampling.astype(numpy.float64))
-    # group.create_dataset('extent', data=state.sampling.extent.astype(numpy.float64))
-
+    dataset = group.create_dataset('metadata', data=json.dumps(meta_to_dump))
 
 def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
     assert state.data.ndim == 3

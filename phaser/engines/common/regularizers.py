@@ -51,16 +51,17 @@ class ScanConstraint:
             raise ValueError("Sum of scan constraint weights cannot exceed 1.0")
         
         self.constraints['default'] = 1-total_constraint_weight
-        
-        # self.total_weight = sum(self.constraints.values())
-
+    
         logger.info(f"Initialized scan constraint with kinds {list(self.constraints.keys())} and weights {list(self.constraints.values())}")
     
     def init_state(self, sim: ReconsState) -> ScanUpdate:
         if 'line' in self.constraints:
             if (sim.scan.metadata.get('type') != 'raster') | (sim.scan.metadata.get('rows') is None):
                 raise ValueError("Line scan constraint cannot be applied to scans without row metadata")
-            state = ScanUpdate(previous=sim.scan.data.copy(), row_bins=sim.scan.metadata.get('rows').ravel())
+            row_vals = sim.scan.metadata.get('rows')
+            if isinstance(row_vals, list):
+                row_vals = numpy.array(row_vals, dtype=numpy.integer)
+            state = ScanUpdate(previous=sim.scan.data.copy(), row_bins=row_vals.ravel())
         else:
             state = ScanUpdate(previous=sim.scan.data.copy(), row_bins=None)
         return state
@@ -69,7 +70,6 @@ class ScanConstraint:
         return self.apply_iter(sim, state)
 
     def apply_iter(self, sim: ReconsState, state: ScanUpdate) -> t.Tuple[ReconsState, ScanUpdate]:
-        # cast = to_real_dtype(sim.object.data.dtype)
         xp = get_array_module(sim.scan.data)
         update = xp.zeros_like(sim.scan.data, dtype=sim.scan.data.dtype)
         for kind, weight in self.constraints.items():
