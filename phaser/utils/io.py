@@ -6,7 +6,7 @@ import json
 import numpy
 from numpy.typing import NDArray
 import h5py
-from phaser.utils.tree import map
+from phaser.utils import tree
 
 from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.object import ObjectSampling
@@ -242,7 +242,7 @@ def hdf5_write_scan_state(state: ScanState, group: h5py.Group):
     dataset = group.create_dataset('initial', data=state.initial_scan)
     dataset.dims[0].label = 'position'
     dataset.dims[1].label = 'yx'
-    meta_to_dump = map(lambda v: to_numpy(v).tolist() if hasattr(v, '__array_priority__') else v, state.metadata)
+    meta_to_dump = tree.map(lambda v: to_numpy(v).tolist() if hasattr(v, '__array_priority__') else v, state.metadata)
 
     dataset = group.create_dataset('metadata', data=json.dumps(meta_to_dump))
 
