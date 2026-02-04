@@ -363,7 +363,8 @@ def initialize_reconstruction(
         wavelength=wavelength
     )
     state = state.to_xp(xp)  # TODO: figure out why this isn't already the case
-    data, state = _normalize_scan_shape(data, state)
+    if plan.init.state is None:
+        data, state = _normalize_scan_shape(data, state)
 
     # process post_init hooks
     for p in plan.post_init:
