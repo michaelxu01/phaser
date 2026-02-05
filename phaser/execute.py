@@ -136,7 +136,6 @@ def _normalize_scan_shape(
     """
     patterns_shape = patterns.patterns.shape[:-2]
     scan_shape = state.scan.data.shape[:-1]
-    print('patterns shape:', patterns_shape, 'scan shape:', scan_shape)
     n_patterns = math.prod(patterns_shape)
     n_scan = math.prod(scan_shape)
     if n_scan != n_patterns:
@@ -147,17 +146,6 @@ def _normalize_scan_shape(
 
     patterns.patterns = patterns.patterns.reshape((*new_shape, *patterns.patterns.shape[-2:]))
     state.scan.data = state.scan.data.reshape((*new_shape, 2))
-
-    ## TODO: check that this functions as intended, mainly when loading .h5 files and not applying dropnans
-    if 'raster' == state.scan.metadata.get('type'):
-        if 'rows' in state.scan.metadata:
-            if isinstance(state.scan.metadata.get('rows'), list):
-                state.scan.metadata['rows'] = numpy.array(state.scan.metadata.get('rows'), dtype=numpy.integer)
-            state.scan.metadata['rows'] = (state.scan.metadata['rows']).reshape((*new_shape, 1))
-        if 'cols' in state.scan.metadata:
-            if isinstance(state.scan.metadata.get('cols'), list):
-                state.scan.metadata['cols'] = numpy.array(state.scan.metadata.get('cols'), dtype=numpy.integer)
-            state.scan.metadata['cols'] = (state.scan.metadata['cols']).reshape((*new_shape, 1))
 
     if state.tilt is not None:
         n_tilt = math.prod(state.tilt.shape[:-1])
@@ -363,15 +351,16 @@ def initialize_reconstruction(
         wavelength=wavelength
     )
     state = state.to_xp(xp)  # TODO: figure out why this isn't already the case
-    if plan.init.state is None:
-        data, state = _normalize_scan_shape(data, state)
-
+    
     # process post_init hooks
     for p in plan.post_init:
         (data, state) = p({
             'data': data, 'state': state,
             'dtype': dtype, 'seed': seed, 'xp': xp
         })
+
+    # after post_init (for example drop_nans), check that scan and patterns match in shape
+    data, state = _normalize_scan_shape(data, state)
 
     # perform some checks on preprocessed data
 

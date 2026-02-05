@@ -60,7 +60,11 @@ class ScanConstraint:
                 raise ValueError("Line scan constraint cannot be applied to scans without row metadata")
             row_vals = sim.scan.metadata.get('rows')
             if isinstance(row_vals, list):
-                row_vals = numpy.array(row_vals, dtype=numpy.integer)
+                row_vals = numpy.array(row_vals, dtype=numpy.int64)
+            
+            if sim.scan.data.shape[0] != row_vals.ravel().shape[0]:
+                raise ValueError(f"{row_vals.ravel().shape[0]} row indices from metadata does not match {sim.scan.data.ravel().shape[0]} scan positions")
+            
             state = ScanUpdate(previous=sim.scan.data.copy(), row_bins=row_vals.ravel())
         else:
             state = ScanUpdate(previous=sim.scan.data.copy(), row_bins=None)
