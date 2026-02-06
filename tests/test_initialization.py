@@ -44,6 +44,23 @@ def load_no_probe(args, props) -> RawData:
         'seed': None,
     }
 
+def load_empty_with_nan(args, props) -> RawData:
+    scan_shape = props['scan_shape']
+    det_shape = props['det_shape']
+    nan_pos = props['nan_inds']
+
+    patterns = numpy.zeros((*scan_shape, *det_shape), dtype=numpy.float32)
+    if nan_pos is not None:
+        patterns[nan_pos] = numpy.full(det_shape, fill_value=numpy.nan)
+    return {
+        'patterns': patterns,
+        'mask': numpy.ones(det_shape, dtype=numpy.float32),
+        'sampling': Sampling(det_shape, sampling=(1.0, 1.0)),
+        'wavelength': 1.0,
+        'scan_hook': None,
+        'probe_hook': None,
+        'seed': None,
+    }
 
 def test_load_raw_data_missing():
     plan = ReconsPlan.from_data({
@@ -185,3 +202,42 @@ def test_load_3d_raw_data():
 
     assert recons.state.scan.data.shape == (*scan_shape, 2)
     assert recons.patterns.patterns.shape == (*scan_shape, *det_shape)
+
+@pytest.mark.parametrize(('scan_shape', 'nan', 'loaded_scan', 'expected_scan'),[
+                         ((64, 64), None, (64, 64), (4096,)),
+                         ((4096,), (0), (64, 64), (4096-1,)),
+                         ((64, 64), (0,0), (4096-1,1), (4096-1,)),
+                         ((4096,), (0), (4096,1), (4096-1,))
+                         ])
+def test_load_raw_data_scan_dropnan(scan_shape, nan, loaded_scan, expected_scan):
+    # scan_shape = (64, 64)
+    det_shape = (128, 128)
+
+    plan = ReconsPlan.from_data({
+        'name': 'test',
+        'raw_data': {
+            'type': 'tests.test_initialization:load_empty_with_nan',
+            'scan_shape': scan_shape,
+            'det_shape': det_shape,
+            'nan_inds': nan,
+        },
+        'init': {
+            'scan': {
+                'type': 'raster',
+                'shape': loaded_scan,
+                'step_size': (1.0, 1.0),
+            },
+            'probe': {
+                'type': 'focused',
+                'conv_angle': 20.0,
+                'defocus': 300.0,
+            }
+        },
+        'post_init': ['drop_nans']
+        ,
+        'engines': [],
+    })
+    recons = initialize_reconstruction(plan)
+
+    assert recons.state.scan.data.shape == (*expected_scan, 2)
+    assert recons.patterns.patterns.shape == (*expected_scan, *det_shape)
