@@ -39,10 +39,11 @@ class RawData(t.TypedDict):
 class LoadEmpadProps(Dataclass):
     path: Path
 
-    diff_step: float | None = None
-    kv: float | None = None
-    adu: float | None = None
-    det_flips: tuple[bool, bool, bool] | None = None
+    empad_version: t.Optional[int] = None
+    diff_step: t.Optional[float] = None
+    kv: t.Optional[float] = None
+    adu: t.Optional[float] = None
+    det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
 
 
 class LoadGatanProps(Dataclass):
