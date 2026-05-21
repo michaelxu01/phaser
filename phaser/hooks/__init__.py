@@ -189,12 +189,13 @@ class PostInitArgs(t.TypedDict):
 class ScaleProps(Dataclass):
     scale: float
 
+
 class OffsetProps(Dataclass):
     offset: float
 
+
 class BinProps(Dataclass):
     bin: int
-
 
 
 class CropDataProps(Dataclass):
@@ -222,6 +223,11 @@ class ApplyMtfProps(Dataclass):
     domain: t.Literal['real', 'recip'] = 'recip'
     """Whether to apply the filter by direct spatial-domain convolution ('real') or by
     multiplying in the Fourier domain ('recip')."""
+class SetDetectorMaskProps(Dataclass):
+    path: Path
+    """Path to detector mask"""
+    invert: bool = False
+    """Whether to invert detector mask"""
 
 
 class PostLoadHook(Hook[RawData, RawData]):
@@ -232,6 +238,7 @@ class PostLoadHook(Hook[RawData, RawData]):
         'offset': ('phaser.hooks.preprocessing:offset_patterns', OffsetProps),
         'bin': ('phaser.hooks.preprocessing:bin_patterns', BinProps),
         'apply_mtf': ('phaser.hooks.preprocessing:apply_mtf', ApplyMtfProps),
+        'set_mask': ('phaser.hooks.preprocessing:set_detector_mask', SetDetectorMaskProps),
     }
 
 
