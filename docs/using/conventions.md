@@ -1,5 +1,9 @@
 # Conventions & glossary
 
+!!! warning "Legacy documentation"
+
+    This page is outdated and may contain incorrect units or array conventions. Verify scientific and storage conventions against the current state, loader, and simulation implementations before relying on them.
+
 ## Units
 
 The core ptychographic routines are unit-independent, so any units can be used. However, since this package is designed primarily for high-resolution electron ptychography, data is typically loaded and stored with length units of Angstrom (\( 1 \:\mathrm{\AA} = 10^{-10} \:\mathrm{m} \)). 

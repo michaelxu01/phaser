@@ -1,5 +1,9 @@
 # Algorithm details
 
+!!! warning "Legacy documentation"
+
+    This page has not yet been reverified against the current reconstruction engines. Treat equations and descriptions as historical material until the relevant engine implementation and tests have been reviewed.
+
 ## Theory of ptychography
 
 Ptychography is an inverse problem where, given a series of diffraction patterns taken under shifted illumination, we attempt to reconstruct the experimental conditions 'most likely' to give us those diffraction patterns.

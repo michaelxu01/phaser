@@ -1,5 +1,9 @@
 # Reconstruction plan files
 
+!!! warning "Legacy documentation"
+
+    This page is outdated and may not describe the current plan schema. Names, types, defaults, and available hooks must be verified against `phaser/plan.py`, `phaser/types.py`, and the hook registries under `phaser/hooks/`.
+
 A 'plan' is a file specifying a series of reconstruction steps ('engines') to take. Plan files are specified in the [YAML](https://yaml.org) data specification language, to allow files to be easily read by both humans and machines.
 
 ## Plan options
