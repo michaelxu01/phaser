@@ -1,20 +1,114 @@
-site_name: phaser Documentation
+site_name: Phaser Documentation
 repo_url: https://github.com/hexane360/phaser
 
-docs_dir: 'docs'
-site_dir: 'site'
+docs_dir: docs
+site_dir: site
 extra_css:
   - style.css
 
 nav:
   - Home: index.md
-  - 'Using phaser':
-    - using/starting.md
-    - using/plan.md
-    - using/algorithms.md
-    - using/conventions.md
-  - API:
-    - phaser.state: api/state.md
+  - Get started:
+    - Get started: get-started/index.md
+    - Installing Phaser: get-started/install.md
+    - Your first reconstruction: get-started/first-reconstruction.md
+    - Validating a plan: get-started/validate-a-plan.md
+  - Concepts:
+    - Ptychography in Phaser: concepts/ptychography.md
+    - Coordinates, units, and arrays: concepts/coordinates-units-and-arrays.md
+    - Glossary: concepts/glossary.md
+  - Cookbook:
+    - Cookbook: cookbook/index.md
+    - Choosing a reconstruction engine: cookbook/engine-selection.md
+    - Minimal complete reconstructions:
+      - Reconstructions: cookbook/reconstructions/index.md
+      - Simulated single-slice (gradient): cookbook/reconstructions/simulated-single-slice-gradient.md
+      - Simulated multislice (gradient): cookbook/reconstructions/simulated-multislice-gradient.md
+      - LSQML (experimental PrScO₃): cookbook/reconstructions/lsqml.md
+      - Experimental Si (gradient): cookbook/reconstructions/empad-experimental.md
+      - ePIE: cookbook/reconstructions/epie.md
+    - Recipes:
+      - Recipes: cookbook/recipes/index.md
+      - Coarse-to-fine reconstruction: cookbook/recipes/coarse-to-fine.md
+      - Conventional engine into gradient descent: cookbook/recipes/conventional-to-gradient.md
+      - Increasing resolution between engines: cookbook/recipes/increasing-resolution.md
+      - Changing slice count between engines: cookbook/recipes/changing-slices-between-engines.md
+      - Adding mixed-state probe modes: cookbook/recipes/mixed-state-probe-modes.md
+      - Position refinement: cookbook/recipes/position-refinement.md
+      - Tilt refinement: cookbook/recipes/tilt-refinement.md
+      - Restarting from a saved state: cookbook/recipes/restart-from-hdf5.md
+      - Restarting with an overridden component: cookbook/recipes/restart-overriding-a-component.md
+      - Using cost regularizers: cookbook/recipes/cost-regularizers.md
+      - Using group and iteration constraints: cookbook/recipes/constraints.md
+      - Hyperparameter sweeps with Optuna: cookbook/recipes/optuna-sweeps.md
+    - Parameter reference:
+      - Parameters: cookbook/parameters/index.md
+      - Data and calibration: cookbook/parameters/data-and-calibration.md
+      - Initialization: cookbook/parameters/initialization.md
+      - Simulation geometry: cookbook/parameters/simulation-geometry.md
+      - Grouping and memory: cookbook/parameters/grouping-and-memory.md
+      - Noise models: cookbook/parameters/noise-models.md
+      - Solvers and learning rates: cookbook/parameters/solvers-and-learning-rates.md
+      - Schedules and flags: cookbook/parameters/schedules-and-flags.md
+      - Regularization: cookbook/parameters/regularization.md
+      - Termination and diagnostics: cookbook/parameters/termination-and-diagnostics.md
+      - Output and restart: cookbook/parameters/output-and-restart.md
+    - Performance: cookbook/performance.md
+    - Troubleshooting: cookbook/troubleshooting.md
+  - Architecture:
+    - Architecture: architecture/index.md
+    - Overview: architecture/overview.md
+    - Reconstruction lifecycle: architecture/lifecycle.md
+    - State and scientific conventions: architecture/state-and-conventions.md
+    - Hooks:
+      - Hooks: architecture/hooks/index.md
+      - Raw-data loaders: architecture/hooks/raw-data-loaders.md
+      - Initialization: architecture/hooks/initialization.md
+      - Post-load: architecture/hooks/post-load.md
+      - Post-init: architecture/hooks/post-init.md
+      - Schedules and flags: architecture/hooks/schedules-and-flags.md
+      - Noise models: architecture/hooks/noise-models.md
+      - Solvers: architecture/hooks/solvers.md
+      - Cost regularizers: architecture/hooks/cost-regularizers.md
+      - Group constraints: architecture/hooks/group-constraints.md
+      - Iteration constraints: architecture/hooks/iteration-constraints.md
+      - Engines: architecture/hooks/engines.md
+    - Observers: architecture/observers.md
+    - JAX implementation guide: architecture/jax.md
+    - Interfaces and deployment: architecture/interfaces.md
+    - Extension testing: architecture/testing.md
+  - Legacy documentation:
+    - Getting started: using/starting.md
+    - Reconstruction plans: using/plan.md
+    - Algorithm details: using/algorithms.md
+    - Conventions and glossary: using/conventions.md
+  - Reference:
+    - phaser.state: generated/api/state.md
+    - Plan reference: generated/plan/index.md
+    - Hook reference:
+      - Hooks: generated/hooks/index.md
+      - Raw data loaders: generated/hooks/raw-data.md
+      - Probe: generated/hooks/probe.md
+      - Object: generated/hooks/object.md
+      - Scan: generated/hooks/scan.md
+      - Tilt: generated/hooks/tilt.md
+      - Post-load: generated/hooks/post-load.md
+      - Post-init: generated/hooks/post-init.md
+      - Noise models: generated/hooks/noise-model.md
+      - Conventional solvers: generated/hooks/conventional-solver.md
+      - Position solvers: generated/hooks/position-solver.md
+      - Gradient solvers: generated/hooks/gradient-solver.md
+      - Flags: generated/hooks/flag.md
+      - Schedules: generated/hooks/schedule.md
+      - Group constraints: generated/hooks/group-constraint.md
+      - Iteration constraints: generated/hooks/iter-constraint.md
+      - Cost regularizers: generated/hooks/cost-regularizer.md
+      - Engines: generated/hooks/engine.md
+  - Documentation design:
+    - Architecture: design/documentation-architecture.md
+    - Implementation plan: design/implementation-plan.md
+    - Implementation checklist: design/implementation-checklist.md
+    - Authoring guide: design/authoring-guide.md
 
 theme:
   name: material
@@ -36,22 +130,10 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  #palette:
-  #  primary: purple
-  #  accent: green
-  #features:
-  #  - navigation.tabs
-  #  - navigation.tabs.sticky
-  #  - navigation.expand
-  #  - navigation.indexes
 
-extra:
-  version:
-    provider: mike
 extra_javascript:
   - javascript/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
-  - https://cdn.jsdelivr.net/npm/mathjax@4.0.0-beta.7/tex-mml-chtml.min.js
+  - https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js
 
 markdown_extensions:
   - admonition
@@ -64,40 +146,14 @@ markdown_extensions:
       generic: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
-  - markdown_include.include:
-      base_path: docs
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 plugins:
   - search
-  - autorefs
-  - mkdocstrings:
-      #custom_templates: templates
-      handlers:
-        python:
-          paths: [.]
-          inventories:
-            # 3rd-party object inventories
-            - https://docs.python.org/3/objects.inv
-            - https://numpy.org/doc/stable/objects.inv
-            - https://docs.scipy.org/doc/scipy/objects.inv 
-            - https://matplotlib.org/stable/objects.inv
-            - https://docs.h5py.org/en/latest/objects.inv
-          options:
-            docstring_section_style: "spacy"
-            separate_signature: true
-            show_signature_annotations: true
-            signature_crossrefs: true
-            show_if_no_docstring: true
-            show_root_heading: true
-            members_order: source
-            filters: ["!^_", "!^__(all|repr|str)__$", "!^(DType|Num)?[TUKV](_co(ntra)?)?$",]
-            inherited_members: false
-  - mike:
-      version_selector: true
-      canonical_version: latest
-     #alias_type: symlink
 
 watch:
   - phaser/
-  - README.md
