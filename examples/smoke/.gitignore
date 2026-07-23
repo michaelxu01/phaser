@@ -1,0 +1,6 @@
+# Synthesized smoke-test data and reconstruction outputs are generated on demand
+# (see make_test_data.py) and are never committed -- this keeps WP-5's dataset
+# out of the repository per checklist blocker B13.
+data/
+data_multislice/
+output/

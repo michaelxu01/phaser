@@ -1,0 +1,72 @@
+# Minimal single-slice gradient-descent reconstruction of a synthesized dataset.
+#
+# Run `python examples/smoke/make_test_data.py` from the repository root FIRST to
+# generate examples/smoke/data/patterns.npy (not checked into the repository; see
+# examples/smoke/make_test_data.py and examples/smoke/.gitignore).
+#
+# Validate:  phaser validate examples/smoke/single_slice_gradient.yaml
+# Run:       phaser run examples/smoke/single_slice_gradient.yaml
+# (both from the repository root, so relative paths below resolve.)
+
+name: "smoke_single_slice_gradient"
+backend: jax
+
+raw_data:
+  type: manual
+  path: "examples/smoke/data/patterns.npy"
+  kv: 300.0
+  diff_step: 1.538085515954122   # mrad; must match examples/smoke/data/manifest.json
+  adu: 1.0                       # data is already in electron-count units; disables ADU scaling
+  fftshifted: true               # synthesized patterns are already corner-origin
+
+post_load:
+  - type: poisson
+    scale: 5.0e+4                # electrons/pattern; adds shot noise to the noiseless synthetic data
+
+init:
+  probe:
+    type: focused
+    conv_angle: 20.0              # mrad
+    defocus: 100.0                # A (+ = overfocus)
+  scan:
+    type: raster
+    shape: [16, 16]
+    step_size: 1.0                # A
+
+engines:
+  - type: gradient
+    niter: 200
+    grouping: 64
+    probe_modes: 1
+
+    noise_model:
+      type: amplitude
+      offset: 1.0             # regularizes sqrt() derivative where model intensity is ~0 (see Failure modes)
+
+    solvers:
+      object:
+        type: adam
+        learning_rate: 2.0e-3
+        nesterov: true
+      probe:
+        type: adam
+        learning_rate: 5.0e-3
+        nesterov: true
+
+    regularizers: []
+    group_constraints: []
+    iter_constraints:
+      - type: clamp_object_amplitude    # object is pure-phase by construction; remove the spurious amplitude degree of freedom
+        amplitude: 1.05
+      - type: remove_phase_ramp         # removes the arbitrary linear phase ramp gradient descent is free to add
+      - type: limit_probe_support
+        max_angle: 40.0                  # mrad; bandwidth-limits the probe update to twice the aperture
+
+    update_probe: {after: 5}
+    update_positions: false
+
+    save: {every: 50}
+    save_images: {every: 50}
+    save_options:
+      out_dir: "examples/smoke/output"
+      images: ['probe', 'object_phase_sum', 'object_mag_sum']
