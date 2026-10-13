@@ -20,7 +20,8 @@ from rich.prompt import Prompt, FloatPrompt, Confirm
 
 # TODO: generalize to other detectors
 from phaser.io.empad import EmpadMetadata, load_4d
-from phaser.utils.misc import natural_key
+
+from phaser.cli.utils import natural_key
 
 
 def load_adf(path: t.Union[str, Path]) -> t.Tuple[numpy.ndarray, t.Any]:

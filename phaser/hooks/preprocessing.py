@@ -17,7 +17,6 @@ from phaser.utils.num import Sampling, cast_array_module, get_array_module, to_n
 
 from . import (
     ApplyMtfProps,
-    SetDetectorMaskProps,
     BinProps,
     CropDataProps,
     DropNanProps,
@@ -26,6 +25,7 @@ from . import (
     PostInitArgs,
     RawData,
     ScaleProps,
+    SetDetectorMaskProps,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ def crop_data(raw_data: RawData, props: CropDataProps) -> RawData:
         }
 
     return raw_data
+
 
 def scale_patterns(raw_data: RawData, props: ScaleProps) -> RawData:
     raw_data['patterns'] *= props.scale

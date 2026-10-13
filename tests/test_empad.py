@@ -3,7 +3,7 @@ import json
 import pytest
 from pane.errors import ConvertError
 
-from phaser.io.empad import EmpadMetadata
+from phaser.io.empad import EmpadMetadata, UnscannedDataset
 
 from .utils import INPUT_FILES_PATH
 
@@ -40,8 +40,8 @@ def test_read_empad2_toml_metadata(tmp_path):
     assert metadata.file_type == 'empad_metadata'
     assert metadata.name == 'acquisition_53'
     assert metadata.empad_version == 2
-    # raw file not present, name from metadata is kept
-    assert metadata.raw_filename == 'acquisition_53.raw'
+    # raw file not present, conventional name is used
+    assert metadata.raw_filename == 'scan_x200_y200.raw'
     assert metadata.orig_path == tmp_path
     assert metadata.author is None
     assert metadata.time == '2026-10-10T19:45:30.408447+00:00'
@@ -59,10 +59,15 @@ def test_read_empad2_toml_metadata(tmp_path):
     assert metadata.notes == "15nm"
     assert metadata.defocus is None
 
-    # falls back to the raw file on disk
-    (tmp_path / 'scan_x200_y200.raw').touch()
+    # single raw file on disk is used
+    (tmp_path / 'other.raw').touch()
     metadata = EmpadMetadata.from_toml(toml_path)
-    assert metadata.raw_filename == 'scan_x200_y200.raw'
+    assert metadata.raw_filename == 'other.raw'
+
+    # only raster scans are 4D STEM datasets
+    toml_path.write_text(toml_path.read_text().replace('"stem_raster"', '"other"'))
+    with pytest.raises(UnscannedDataset):
+        EmpadMetadata.from_toml(toml_path)
 
 
 def test_read_pymultislicer_metadata():

@@ -39,11 +39,11 @@ class RawData(t.TypedDict):
 class LoadEmpadProps(Dataclass):
     path: Path
 
-    empad_version: t.Optional[int] = None
-    diff_step: t.Optional[float] = None
-    kv: t.Optional[float] = None
-    adu: t.Optional[float] = None
-    det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
+    empad_version: int | None = None
+    diff_step: float | None = None
+    kv: float | None = None
+    adu: float | None = None
+    det_flips: tuple[bool, bool, bool] | None = None
 
 
 class LoadGatanProps(Dataclass):
@@ -189,13 +189,12 @@ class PostInitArgs(t.TypedDict):
 class ScaleProps(Dataclass):
     scale: float
 
-
 class OffsetProps(Dataclass):
     offset: float
 
-
 class BinProps(Dataclass):
     bin: int
+
 
 
 class CropDataProps(Dataclass):
@@ -223,6 +222,8 @@ class ApplyMtfProps(Dataclass):
     domain: t.Literal['real', 'recip'] = 'recip'
     """Whether to apply the filter by direct spatial-domain convolution ('real') or by
     multiplying in the Fourier domain ('recip')."""
+
+
 class SetDetectorMaskProps(Dataclass):
     path: Path
     """Path to detector mask"""

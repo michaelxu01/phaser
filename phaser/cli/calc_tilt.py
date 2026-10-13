@@ -27,6 +27,8 @@ def calc_tilt(path: t.Union[str, Path]):
 
     path = Path(path).resolve()
     meta = EmpadMetadata.from_json(path)
+    if meta.diff_step is None:
+        raise ValueError("'diff_step' is missing from the metadata. Run 'process_empad' with prompts, or add it to the JSON.")
 
     exp_path = meta.path or Path('.')
     raw_path = exp_path / (meta.raw_filename or "scan_x128_y128.raw")

@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from pathlib import Path
 import re
 import typing as t
@@ -205,7 +206,6 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
     @staticmethod
     def from_toml(toml_path: t.Union[str, Path]) -> 'EmpadMetadata':
-        from datetime import datetime
         try:
             import tomllib
         except ImportError:
@@ -230,7 +230,7 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
         acquisition = get(toml, 'acquisition')
         scan = get(toml, 'scan')
-        if 'width' not in scan or 'height' not in scan:
+        if scan.get('scan_service') != 'stem_raster':
             # not a 4D stem dataset
             raise UnscannedDataset()
 
@@ -240,15 +240,15 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
         bg_unix = None if bg_time is None else datetime.fromisoformat(str(bg_time)).timestamp()
         has_bg = try_get(scan, 'dark_suitable')
 
-        raw_filename = str(get(toml, 'raw_file.filename'))
-        if not (orig_path / raw_filename).exists():
-            # recorded filename often doesn't match the file on disk ('scan_x{x}_y{y}.raw')
-            raw_files = list(filter(lambda f: not f.name.startswith('.'), orig_path.glob('*.raw')))
-            if len(raw_files) == 1:
-                raw_filename = raw_files[0].name
-
         optics = get(toml, 'microscope.optics')
-        scan_shape = (int(scan['width']), int(scan['height']))
+        scan_shape = (int(get(scan, 'width')), int(get(scan, 'height')))
+
+        # 'raw_file.filename' doesn't match the file on disk, so it isn't used
+        raw_files = list(filter(lambda f: not f.name.startswith('.'), orig_path.glob('*.raw')))
+        if len(raw_files) == 1:
+            raw_filename = raw_files[0].name
+        else:
+            raw_filename = f"scan_x{scan_shape[0]}_y{scan_shape[1]}.raw"
         # all in m
         fov = (float(get(optics, 'scan_fov_x')), float(get(optics, 'scan_fov_y')))
         scan_step = (float(get(optics, 'scan_pixel_size_x')), float(get(optics, 'scan_pixel_size_y')))

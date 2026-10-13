@@ -18,9 +18,24 @@ from rich.console import Console
 
 from phaser.io.empad import EmpadMetadata, UnscannedDataset
 from phaser.utils.config import Config
+from phaser.cli.utils import natural_key
 
 
 T = t.TypeVar('T')
+
+
+class Empad2Config(pane.PaneBase):
+    diff_step: t.Dict[float, t.Tuple[float, float]] = {}
+    """Diffraction pixel size calibration, kV: [camera_length, diff_step]"""
+
+    adu: t.Optional[t.Tuple[float, float]] = None
+    """ADU (single electron intensity) calibration, [kV, adu]"""
+
+    det_flips: t.Tuple[bool, bool, bool] = (False, False, False)
+    """Detector flips (flip_y, flip_x, transpose). Set and forget"""
+
+    det_rotation: float = 0.0
+    """Detector rotation relative to scan axes (degrees)."""
 
 
 class ProcessEmpadConfig(pane.PaneBase):
@@ -44,7 +59,7 @@ class ProcessEmpadConfig(pane.PaneBase):
     """Detector flips (flip_y, flip_x, transpose). Set and forget"""
 
     empad_version: int = 1
-    """Empad version"""
+    """Empad version of XML metadata. TOML metadata is always version 2."""
 
     det_rotation: float = 0.0
     """Detector rotation relative to scan axes (degrees)."""
@@ -53,7 +68,10 @@ class ProcessEmpadConfig(pane.PaneBase):
     """Default probe current (pA)"""
 
     conv_angle: float = 25.0
-    """Default convergence angle (mrad)"""
+    """Default convergence angle (mrad). Used only if missing from metadata."""
+
+    empad2: Empad2Config = Empad2Config()
+    """Detector calibrations used for EMPAD2 TOML metadata, in place of those above."""
 
 
 CONFIG: Config[ProcessEmpadConfig] = Config('process_empad', ProcessEmpadConfig)
@@ -182,32 +200,56 @@ class AduParam(Parameter[float]):
         return val
 
 
-def make_params(config: ProcessEmpadConfig) -> t.Sequence[t.Tuple[str, Parameter]]:
+@dataclass
+class ConvAngleParam(FloatParam):
+    def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> float:
+        if metadata.conv_angle is not None:
+            # prefer value read from the microscope
+            self.default_val = metadata.conv_angle
+            self.default_str = f"{metadata.conv_angle:.2f}"
+        return super().ask(metadata, console)
+
+
+@dataclass
+class AuthorParam(OptStringParam):
+    def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> t.Optional[str]:
+        if metadata.author is not None:
+            self.default_val = metadata.author
+        return super().ask(metadata, console)
+
+
+def make_params(config: ProcessEmpadConfig, empad2: bool = False) -> t.Sequence[t.Tuple[str, Parameter]]:
+    calib = config.empad2 if empad2 else config
     return [
-        ('conv_angle', FloatParam("Convergence angle", config.conv_angle, "mrad", f"{config.conv_angle:.1f}")),
         ('defocus', FloatParam("Defocus (CW is +)", 0.0, "nm", "0.0", 1e-9)), # nm to m
+        ('conv_angle', ConvAngleParam("Convergence angle", config.conv_angle, "mrad", f"{config.conv_angle:.1f}")),
         ('beam_current', FloatParam("Approx. probe current", config.probe_current, "pA", f"{config.probe_current:.1f}", 1e-12)),  # pA to A
-        ('diff_step', CameraParam(config.diff_step)),
-        ('adu', AduParam(config.adu[1], config.adu[0] * 1e3) if config.adu is not None else AduParam()),
-        ('author', OptStringParam("Author", None)),
+        ('diff_step', CameraParam(calib.diff_step)),
+        ('adu', AduParam(calib.adu[1], calib.adu[0] * 1e3) if calib.adu is not None else AduParam()),
+        ('author', AuthorParam("Author", None)),
     ]
 
 
 def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
-                params: t.Sequence[t.Tuple[str, Parameter]],
+                params: t.Mapping[bool, t.Sequence[t.Tuple[str, Parameter]]],
                 console: Console, prompt: bool = True):
+    """`params` maps whether a dataset is EMPAD2 (TOML metadata) to the parameters to prompt for."""
     n_proc = 0
     path = Path(path)
 
-    for raw_file in path.rglob('**/*.xml'):
-        raw_dir = raw_file.parent
-        try:
-            [metadata_path, *extra] = list(filter(lambda f: not f.name.startswith('.'), raw_dir.glob('*.xml')))
-        except ValueError:
-            continue
-        if len(extra):
-            console.print(f"[warning]Skipping dir with multiple metadata files: '{raw_dir}'.")
-            continue
+    raw_dirs = set(f.parent for f in path.rglob('*') if f.suffix == '.xml' or f.name == 'metadata.toml')
+    for raw_dir in sorted(raw_dirs, key=natural_key):
+        metadata_path = raw_dir / 'metadata.toml'
+        # EMPAD2 metadata takes priority (a stub XML is usually present as well)
+        empad2 = metadata_path.exists()
+        if not empad2:
+            try:
+                [metadata_path, *extra] = list(filter(lambda f: not f.name.startswith('.'), raw_dir.glob('*.xml')))
+            except ValueError:
+                continue
+            if len(extra):
+                console.print(f"[warning]Skipping dir with multiple metadata files: '{raw_dir}'.")
+                continue
 
         output_path = metadata_path.with_suffix('.json')
         if output_path.exists():
@@ -215,26 +257,34 @@ def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
             continue
 
         try:
-            metadata = EmpadMetadata.from_xml(metadata_path)
+            metadata = EmpadMetadata.from_toml(metadata_path) if empad2 else EmpadMetadata.from_xml(metadata_path)
             console.print(f"Loaded '{metadata_path}'.")
         except UnscannedDataset:
             console.print(f"[info]Skipping metadata '{metadata_path}' (not a 4D STEM dataset).")
             continue
         except Exception:
-            console.print(f"[error]Couldn't parse XML metadata '{metadata_path}'. Skipping.")
+            console.print(f"[error]Couldn't parse metadata '{metadata_path}'. Skipping.")
             console.print_exception()
             continue
 
-        metadata.empad_version = config.empad_version
-        metadata.det_rotation = config.det_rotation
-        metadata.det_flips = config.det_flips
+        if not (raw_dir / metadata.raw_filename).exists():
+            console.print(f"[warning]Couldn't find raw data '{metadata.raw_filename}' in '{raw_dir}'.")
+
+        calib = config.empad2 if empad2 else config
+        if not empad2:
+            metadata.empad_version = config.empad_version
+        metadata.det_rotation = calib.det_rotation
+        metadata.det_flips = calib.det_flips
 
         if prompt:
-            for (k, param) in params:
+            if metadata.notes is not None:
+                console.print(f"Notes: {metadata.notes}", markup=False)
+
+            for (k, param) in params[empad2]:
                 val = param.ask(metadata, console)
                 setattr(metadata, k, val)
 
-            metadata.notes = Prompt.ask("Notes", default=None, console=console)
+            metadata.notes = Prompt.ask("Notes", default=metadata.notes, console=console)
 
         metadata.write_json(output_path, indent=4)
         console.print(f"Wrote metadata to '{output_path}'.")
@@ -256,7 +306,10 @@ def process_empad(
     make_config: bool = False,
 ):
     """
-    Process EMPAD XML metadata for all the datasets contained in FOLDER.
+    Process EMPAD XML/TOML metadata for all the datasets contained in FOLDER.
+
+    Datasets with a 'metadata.toml' file are processed as EMPAD2. Otherwise,
+    XML metadata is used.
     """
     console = default_console()
     config = CONFIG
@@ -270,7 +323,7 @@ def process_empad(
         return
 
     config = config.get()
-    params = make_params(config)
+    params = {False: make_params(config), True: make_params(config, empad2=True)}
 
     if folder is None:
         folder = Path('.')
