@@ -155,6 +155,7 @@ commands: t.List[t.Union[click.Command, t.Union[t.Tuple[str, str, t.Sequence[str
     ('process_empad', "Process EMPAD XML metadata"),
     ('calc_drift', "Calculate and correct linear drift"),
     ('calc_tilt', "Calculate global dataset tilt"),
+    ('process_empad2', "Process EMPAD2 TOML metadata"),
 ]
 
 

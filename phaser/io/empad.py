@@ -203,6 +203,80 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
             post_exposure_time=post_exposure_time,
         )
 
+    @staticmethod
+    def from_toml(toml_path: t.Union[str, Path]) -> 'EmpadMetadata':
+        from datetime import datetime
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # python < 3.11
+
+        orig_path = Path(toml_path).parent
+        with open(toml_path, 'rb') as f:
+            toml = tomllib.load(f)
+
+        def get(root: t.Dict[str, t.Any], key: str) -> t.Any:
+            for k in key.split('.'):
+                if not isinstance(root, dict) or k not in root:
+                    raise ValueError(f"Couldn't find key '{key}' in TOML metadata.")
+                root = root[k]
+            return root
+
+        def try_get(root: t.Dict[str, t.Any], key: str) -> t.Optional[t.Any]:
+            try:
+                return get(root, key)
+            except ValueError:
+                return None
+
+        acquisition = get(toml, 'acquisition')
+        scan = get(toml, 'scan')
+        if 'width' not in scan or 'height' not in scan:
+            # not a 4D stem dataset
+            raise UnscannedDataset()
+
+        timestamp = str(get(acquisition, 'timestamp'))
+        time_unix = datetime.fromisoformat(timestamp).timestamp()
+        bg_time = try_get(toml, 'dark_reference.timestamp')
+        bg_unix = None if bg_time is None else datetime.fromisoformat(str(bg_time)).timestamp()
+        has_bg = try_get(scan, 'dark_suitable')
+
+        raw_filename = str(get(toml, 'raw_file.filename'))
+        if not (orig_path / raw_filename).exists():
+            # recorded filename often doesn't match the file on disk ('scan_x{x}_y{y}.raw')
+            raw_files = list(filter(lambda f: not f.name.startswith('.'), orig_path.glob('*.raw')))
+            if len(raw_files) == 1:
+                raw_filename = raw_files[0].name
+
+        optics = get(toml, 'microscope.optics')
+        scan_shape = (int(scan['width']), int(scan['height']))
+        # all in m
+        fov = (float(get(optics, 'scan_fov_x')), float(get(optics, 'scan_fov_y')))
+        scan_step = (float(get(optics, 'scan_pixel_size_x')), float(get(optics, 'scan_pixel_size_y')))
+
+        conv_angle = try_get(toml, 'microscope.illumination.convergence_angle')
+
+        return EmpadMetadata(
+            name=str(get(acquisition, 'name')),
+            empad_version=2,
+            orig_path=orig_path,
+            raw_filename=raw_filename,
+            author=acquisition.get('operator_name') or None,
+            time=timestamp,
+            time_unix=time_unix,
+            bg_unix=bg_unix,
+            has_bg=None if has_bg is None else bool(has_bg),
+            voltage=float(get(toml, 'microscope.high_tension.voltage')),  # V
+            conv_angle=None if conv_angle is None else float(conv_angle) * 1e3,  # rad to mrad
+            camera_length=float(get(optics, 'camera_length')),  # m
+            # TODO: units unresolved, assumed to be degrees
+            scan_rotation=float(get(optics, 'scan_rotation')),
+            scan_shape=scan_shape,
+            scan_fov=fov,
+            scan_step=scan_step,
+            exposure_time=float(get(scan, 'exposure_time_s')),
+            notes=acquisition.get('notes') or None,
+        )
+
 
 def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None, *,
             memmap: bool = False, flips: t.Optional[t.Tuple[bool, bool, bool]] = None,

@@ -1,0 +1,53 @@
+[acquisition]
+name = "acquisition_53"
+timestamp = "2026-10-10T19:45:30.408447+00:00"
+operator_name = ""
+notes = "15nm"
+
+[scan]
+exposure_time_s = 0.0005
+frame_count = 40000
+dtype = "float32"
+pixel_format = "PixelModeCombined"
+external_triggered = true
+dark_suitable = true
+dark_reference = "dark_coefficients_20261010_193939.npz"
+width = 200
+height = 200
+scan_count = 1
+scan_service = "stem_raster"
+scan_frame = 201
+scan_region = [
+    0,
+    0,
+    200,
+    201,
+]
+
+[microscope.high_tension]
+voltage = 300000.0
+offset = 0.0
+state = "ON"
+
+[microscope.optics]
+camera_length = 0.5766
+camera_length_display = 0.58
+scan_fov_x = 9.585889570552145e-09
+scan_fov_y = 9.585889570552145e-09
+scan_rotation = 0.0
+focus = 0.0
+defocus = 0.0
+raw_focus = 0.0
+scan_pixel_size_x = 4.769099351542572e-11
+scan_pixel_size_y = 4.769099351542572e-11
+
+[microscope.illumination]
+spot_size_index = 7
+convergence_angle = 0.025011686787433686
+
+[dark_reference]
+filename = "dark_coefficients_20261010_193939.npz"
+timestamp = "2026-10-10T19:39:39.214721+00:00"
+
+[raw_file]
+filename = "acquisition_53.raw"

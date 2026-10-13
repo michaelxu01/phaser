@@ -29,6 +29,42 @@ def test_read_empad_metadata():
     assert metadata.defocus is None
 
 
+def test_read_empad2_toml_metadata(tmp_path):
+    import shutil
+
+    toml_path = tmp_path / 'metadata.toml'
+    shutil.copy(INPUT_FILES_PATH / 'empad2_metadata.toml', toml_path)
+    metadata = EmpadMetadata.from_toml(toml_path)
+
+    print(repr(metadata))
+    assert metadata.file_type == 'empad_metadata'
+    assert metadata.name == 'acquisition_53'
+    assert metadata.empad_version == 2
+    # raw file not present, name from metadata is kept
+    assert metadata.raw_filename == 'acquisition_53.raw'
+    assert metadata.orig_path == tmp_path
+    assert metadata.author is None
+    assert metadata.time == '2026-10-10T19:45:30.408447+00:00'
+    assert metadata.time_unix == pytest.approx(1791661530.408447)
+    assert metadata.bg_unix == pytest.approx(1791661179.214721)
+    assert metadata.has_bg is True
+    assert metadata.voltage == 300000.0
+    assert metadata.conv_angle == pytest.approx(25.011686787433686)
+    assert metadata.camera_length == 0.5766
+    assert metadata.scan_rotation == 0.0
+    assert metadata.scan_shape == (200, 200)
+    assert metadata.scan_fov == (9.585889570552145e-09,) * 2
+    assert metadata.scan_step == (4.769099351542572e-11,) * 2
+    assert metadata.exposure_time == 0.0005
+    assert metadata.notes == "15nm"
+    assert metadata.defocus is None
+
+    # falls back to the raw file on disk
+    (tmp_path / 'scan_x200_y200.raw').touch()
+    metadata = EmpadMetadata.from_toml(toml_path)
+    assert metadata.raw_filename == 'scan_x200_y200.raw'
+
+
 def test_read_pymultislicer_metadata():
     metadata = EmpadMetadata.from_json(INPUT_FILES_PATH / 'sim_metadata.json')
 
