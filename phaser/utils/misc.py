@@ -1,5 +1,6 @@
 import functools
 import math
+import re
 import typing as t
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -432,6 +433,11 @@ class FloatKey(float):
 def unwrap(val: T | None) -> T:
     assert val is not None
     return val
+
+
+def natural_key(val: object) -> list[int | str]:
+    """Sort key which orders embedded numbers numerically ('acquisition_2' before 'acquisition_10')."""
+    return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', str(val))]
 
 
 def freeze(obj: object) -> t.Any:

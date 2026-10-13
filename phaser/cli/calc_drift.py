@@ -20,6 +20,7 @@ from rich.prompt import Prompt, FloatPrompt, Confirm
 
 # TODO: generalize to other detectors
 from phaser.io.empad import EmpadMetadata, load_4d
+from phaser.utils.misc import natural_key
 
 
 def load_adf(path: t.Union[str, Path]) -> t.Tuple[numpy.ndarray, t.Any]:
@@ -63,14 +64,19 @@ def load_files(paths: t.Iterable[t.Union[str, Path]], inner: float, outer: float
             for path in paths:
                 # eagerly load and put on queue
                 path = Path(path).resolve()
-                meta = EmpadMetadata.from_json(path)
+                try:
+                    meta = EmpadMetadata.from_json(path)
+                except Exception:
+                    print(f"Warning: Skipping '{path}' (not a valid metadata file).")
+                    continue
 
                 exp_path = meta.path or Path('.')
                 raw_path = (exp_path / (meta.raw_filename or "scan_x128_y128.raw")).resolve()
                 if not raw_path.exists():
                     raise ValueError(f"Can't find raw data at path '{raw_path}'")
                 scan_shape = t.cast(t.Tuple[int, int], meta.scan_shape[::-1]) if meta.scan_shape is not None else None
-                raw = load_4d(raw_path, scan_shape=scan_shape, flips=meta.det_flips)
+                raw = load_4d(raw_path, scan_shape=scan_shape, flips=meta.det_flips,
+                              empad_version=meta.empad_version or 1)
 
                 kx = numpy.arange(raw.shape[-2], dtype=numpy.float32) - raw.shape[-2] / 2.
                 ky = numpy.arange(raw.shape[-1], dtype=numpy.float32) - raw.shape[-1] / 2.
@@ -161,7 +167,7 @@ def calc_drift(path: t.Union[str, Path], include: t.Sequence[str] = (), exclude:
         if skip_existing:
             paths = list(filter(lambda path: not calibrated_meta_path(path).exists(), paths))
 
-        paths.sort()
+        paths.sort(key=natural_key)
 
     console.print(f"{len(paths)} file(s) to process.")
 
@@ -175,13 +181,13 @@ def calc_drift(path: t.Union[str, Path], include: t.Sequence[str] = (), exclude:
 
     params['det'] = Prompt.ask("Detector type", choices=['bf', 'adf', 'af'], default=params['det'], console=console)
     if params['det'] in ('af', 'adf'):
-        params['inner'] = float(FloatPrompt.ask(r"Inner radius \[mrad]", default=params['inner'], console=console))
+        params['inner'] = float(FloatPrompt.ask(r"Inner radius \[px]", default=params['inner'], console=console))
         inner = params['inner']
     else:
         inner = 0.
 
     if params['det'] in ('af', 'bf'):
-        params['outer'] = float(FloatPrompt.ask(r"Outer radius \[mrad]", default=params['outer'], console=console))
+        params['outer'] = float(FloatPrompt.ask(r"Outer radius \[px]", default=params['outer'], console=console))
         outer = params['outer']
     else:
         outer = numpy.inf
@@ -193,7 +199,7 @@ def calc_drift(path: t.Union[str, Path], include: t.Sequence[str] = (), exclude:
 
     console.print("Loading files...")
     for (meta_path, meta, virtual_img) in load_files(paths, inner, outer):
-        console.print(f"Loaded file '{meta.path}'")
+        console.print(f"Loaded file '{meta_path}'")
         if not bool(Confirm.ask("Process this file?", default=True)):
             console.print("Skipping file...")
             continue

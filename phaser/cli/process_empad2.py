@@ -1,7 +1,6 @@
 
 from pathlib import Path
 from dataclasses import dataclass
-import re
 import time
 import typing as t
 
@@ -13,6 +12,7 @@ from rich.console import Console
 
 from phaser.io.empad import EmpadMetadata, UnscannedDataset
 from phaser.utils.config import Config
+from phaser.utils.misc import natural_key
 from .process_empad import (
     Parameter, OptStringParam, FloatParam, CameraParam, AduParam,
     default_console
@@ -76,11 +76,6 @@ def make_params(config: ProcessEmpad2Config) -> t.Sequence[t.Tuple[str, Paramete
         ('adu', AduParam(config.adu[1], config.adu[0] * 1e3) if config.adu is not None else AduParam()),
         ('author', AuthorParam("Author", None)),
     ]
-
-
-def natural_key(path: Path) -> t.List[t.Union[int, str]]:
-    # sort 'acquisition_2' before 'acquisition_10'
-    return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', str(path))]
 
 
 def process_dir(path: t.Union[str, Path], config: ProcessEmpad2Config,

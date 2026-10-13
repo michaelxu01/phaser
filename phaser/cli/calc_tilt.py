@@ -33,7 +33,10 @@ def calc_tilt(path: t.Union[str, Path]):
     if not raw_path.exists():
         raise ValueError(f"Can't find raw data at path '{raw_path}'")
 
-    raw = load_4d(raw_path)
+    # [x, y] -> [y, x]
+    scan_shape = t.cast(t.Tuple[int, int], tuple(reversed(meta.scan_shape)))
+    raw = load_4d(raw_path, scan_shape=scan_shape, flips=meta.det_flips,
+                  empad_version=meta.empad_version or 1)
 
     params = {
         'det': 'bf',
