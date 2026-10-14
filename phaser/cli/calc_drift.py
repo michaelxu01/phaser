@@ -176,8 +176,6 @@ def calc_drift(path: t.Union[str, Path], include: t.Sequence[str] = (), exclude:
         'det': 'bf',
         'inner': 0.0,
         'outer': 2.0,
-        'd1': 6.,
-        'd2': 6.
     }
 
     params['det'] = Prompt.ask("Detector type", choices=['bf', 'adf', 'af'], default=params['det'], console=console)
@@ -338,13 +336,14 @@ def calc_drift_one(
 
         while True:
             dists = []
-            for (i, scale, default) in zip(range(len(vertices)-1), (params['scale1'], params['scale2']), (params['d1'], params['d2'])):
+            for (i, scale) in zip(range(len(vertices)-1), (params['scale1'], params['scale2'])):
                 while True:
                     try:
-                        s = Prompt.ask(f"Distance {i+1} (* {scale:.3f} A)", default=default, console=console)
+                        s = Prompt.ask(f"Distance {i+1} (* {scale:.3f} A)", console=console)
                         val = float(eval(s))
                         dists.append(val * scale)
                     except Exception:
+                        console.print("[prompt.invalid]Please enter a number")
                         continue
                     break
             console.print(f"Distances [A]: {dists[0]:.3f}, {dists[1]:.3f}")
