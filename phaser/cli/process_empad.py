@@ -51,7 +51,7 @@ class ProcessEmpadConfig(pane.PaneBase):
     """Default probe current (pA)"""
 
     conv_angle: float = 25.0
-    """Default convergence angle (mrad). Used only if missing from metadata."""
+    """Default convergence angle (mrad). Used only if missing from metadata (e.g. EMPAD1)."""
 
 
 CONFIG: Config[ProcessEmpadConfig] = Config('process_empad', ProcessEmpadConfig)
@@ -93,15 +93,6 @@ class Parameter(t.Generic[T], ABC):
     @abstractmethod
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> T:
         ...
-
-
-@dataclass
-class OptStringParam(Parameter[t.Optional[str]]):
-    def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> t.Optional[str]:
-        val = Prompt.ask(self.name, default=self.default_val, console=console)
-        if val is not None:
-            self.default_val = val
-        return val
 
 
 @dataclass
@@ -180,38 +171,53 @@ class AduParam(Parameter[float]):
         return val
 
 
-@dataclass
-class ConvAngleParam(FloatParam):
-    entered: bool = False
-    """Whether a value has been entered"""
+@dataclass(init=False)
+class ConvAngleParam(Parameter[float]):
+    """Maps metadata f"{conv_angle:.1f}" (None if missing) to the (str, value) entered for it"""
+    used: t.Dict[t.Optional[str], t.Tuple[str, float]]
+
+    def __init__(self, default: float):
+        self.name = 'Convergence angle'
+        self.default_val = default
+        self.used = {}
 
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> float:
-        if not self.entered and metadata.conv_angle is not None:
-            # prefer value read from the microscope, until one has been entered
-            self.default_val = metadata.conv_angle
-            self.default_str = f"{metadata.conv_angle:.2f}"
-        self.entered = True
-        return super().ask(metadata, console)
-
-
-@dataclass
-class AuthorParam(OptStringParam):
-    def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> t.Optional[str]:
-        default_val = self.default_val if self.default_val is not None else metadata.author
-        val = Prompt.ask(self.name, default=default_val, console=console)
-        if val is not None:
-            self.default_val = val
+        if metadata.conv_angle is None:
+            # missing readouts share a key, starting from the config default
+            key = None
+            (default_str, default) = self.used.get(key, (f"{self.default_val:.1f}", self.default_val))
+        else:
+            key = f"{metadata.conv_angle:.1f}"
+            (default_str, default) = self.used.get(key, (key, metadata.conv_angle))
+        (val_str, val) = prompt_ask(self.name, "mrad", default, default_str, console)
+        self.used[key] = (val_str, val)
         return val
-        
+
+
+@dataclass(init=False)
+class AuthorParam(Parameter[t.Optional[str]]):
+    """Maps metadata author (None if missing) to the author entered for it"""
+    used: t.Dict[t.Optional[str], t.Optional[str]]
+
+    def __init__(self):
+        self.name = 'Author'
+        self.default_val = None
+        self.used = {}
+
+    def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> t.Optional[str]:
+        val = Prompt.ask(self.name, default=self.used.get(metadata.author, metadata.author), console=console)
+        self.used[metadata.author] = val
+        return val
+
 
 def make_params(config: ProcessEmpadConfig) -> t.Sequence[t.Tuple[str, Parameter]]:
     return [
         ('defocus', FloatParam("Defocus (CW is +)", 0.0, "nm", "0.0", 1e-9)), # nm to m
-        ('conv_angle', ConvAngleParam("Convergence angle", config.conv_angle, "mrad", f"{config.conv_angle:.1f}")),
+        ('conv_angle', ConvAngleParam(config.conv_angle)),
         ('beam_current', FloatParam("Approx. probe current", config.probe_current, "pA", f"{config.probe_current:.1f}", 1e-12)),  # pA to A
         ('diff_step', CameraParam(config.diff_step)),
         ('adu', AduParam(config.adu[1], config.adu[0] * 1e3) if config.adu is not None else AduParam()),
-        ('author', AuthorParam("Author", None)),
+        ('author', AuthorParam()),
     ]
 
 
