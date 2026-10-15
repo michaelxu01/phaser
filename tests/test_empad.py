@@ -70,6 +70,160 @@ def test_read_empad2_toml_metadata(tmp_path):
         EmpadMetadata.from_toml(toml_path)
 
 
+def test_read_empad_xml_metadata(tmp_path):
+    metadata = EmpadMetadata.from_xml(INPUT_FILES_PATH / 'empad1_metadata.xml')
+
+    print(repr(metadata))
+    assert metadata.file_type == 'empad_metadata'
+    assert metadata.name == 'acquisition_1'
+    assert metadata.empad_version == 1
+    assert metadata.raw_filename == 'scan_x128_y128.raw'
+    assert metadata.orig_path == INPUT_FILES_PATH
+    assert metadata.author is None
+    assert metadata.time == '2026-07-20T18:56:59.701766'
+    assert metadata.time_unix == pytest.approx(1784588219.701766)
+    assert metadata.bg_unix == pytest.approx(1784588075.038519)
+    assert metadata.has_bg is True
+    assert metadata.voltage == 300000.0
+    # not recorded in EMPAD1 metadata
+    assert metadata.conv_angle is None
+    assert metadata.camera_length == 0.4575
+    assert metadata.scan_rotation == 0.0
+    # 'acquire' scan parameters are used, not 'search'
+    assert metadata.scan_shape == (128, 128)
+    assert metadata.scan_fov == pytest.approx((4.880338213710828e-09 / 0.72,) * 2)
+    assert metadata.scan_step == pytest.approx((4.880338213710828e-09 / 0.72 / 128,) * 2)
+    assert metadata.exposure_time == 0.001
+    assert metadata.notes is None
+
+    # series acquisitions are not 4D STEM datasets
+    xml_path = tmp_path / 'acquisition_1.xml'
+    xml_path.write_text((INPUT_FILES_PATH / 'empad1_metadata.xml').read_text().replace(
+        '<scan_parameters mode="search">', '<scan_parameters mode="search"><series_count>10</series_count>'
+    ))
+    with pytest.raises(UnscannedDataset):
+        EmpadMetadata.from_xml(xml_path)
+
+
+def empad1_xml():
+    return ('acquisition.xml', (INPUT_FILES_PATH / 'empad1_metadata.xml').read_text())
+
+
+def empad2_toml(conv_angle=25.011686787433686, author=''):
+    """EMPAD2 dataset, with `conv_angle` in mrad (None to leave it out)"""
+    toml = (INPUT_FILES_PATH / 'empad2_metadata.toml').read_text()
+    (author_line, conv_line) = ('operator_name = ""\n', 'convergence_angle = 0.025011686787433686\n')
+    assert author_line in toml and conv_line in toml
+    toml = toml.replace(author_line, f'operator_name = "{author}"\n')
+    toml = toml.replace(conv_line, '' if conv_angle is None else f'convergence_angle = {conv_angle * 1e-3}\n')
+    return ('metadata.toml', toml)
+
+
+def process_datasets(path, monkeypatch, datasets, answers, config=None):
+    """
+    Run `process_dir` on `datasets` (list of (filename, contents)), one per acquisition folder.
+    `answers` maps prompt names to the answers to give ('' accepts the default). Unlisted prompts
+    accept their default, or are answered with '1' if there is none (a number prompt would otherwise
+    re-prompt forever). Returns the defaults offered for each prompt, and the written metadata.
+    """
+    import io
+    from rich.console import Console
+    from rich.prompt import Prompt
+    from phaser.cli.process_empad import ProcessEmpadConfig, make_params, process_dir
+
+    for (i, (filename, contents)) in enumerate(datasets, 1):
+        acq_dir = path / f'acquisition_{i}'
+        acq_dir.mkdir()
+        (acq_dir / filename).write_text(contents)
+
+    answers = {name: list(vals) for (name, vals) in answers.items()}
+    offered = {}
+
+    def ask(prompt, default=None, **kwargs):
+        # emulates rich, where '' accepts `default`
+        name = prompt.split(' \\[')[0]
+        offered.setdefault(name, []).append(default)
+        answer = answers[name].pop(0) if name in answers else ('' if default else '1')
+        return answer or default
+
+    monkeypatch.setattr(Prompt, 'ask', ask)
+
+    config = config or ProcessEmpadConfig()
+    process_dir(path, config, make_params(config), Console(file=io.StringIO()))
+
+    written = [
+        json.loads((path / f'acquisition_{i}' / filename).with_suffix('.json').read_text())
+        for (i, (filename, _)) in enumerate(datasets, 1)
+    ]
+    return (offered, written)
+
+
+@pytest.mark.parametrize(('dataset', 'empad_version', 'det_flips'), [
+    (empad1_xml(), 1, [True, False, False]),
+    (empad2_toml(), 2, [False, False, False]),
+])
+def test_process_empad_version(tmp_path, monkeypatch, dataset, empad_version, det_flips):
+    (_, [written]) = process_datasets(tmp_path, monkeypatch, [dataset], {})
+    assert written['empad_version'] == empad_version
+    assert written['det_flips'] == det_flips
+
+
+@pytest.mark.parametrize(('datasets', 'answers', 'offered', 'written', 'config_conv_angle'), [
+    # readouts are followed
+    ([empad2_toml(25.0)] * 3, ['', '', ''], ['25.0', '25.0', '25.0'], [25.0, 25.0, 25.0], None),
+    # overrides stick to their readout only
+    ([empad2_toml(25.0), empad2_toml(19.0), empad2_toml(25.0)], ['24', '', ''], ['25.0', '19.0', '24'], [24.0, 19.0, 24.0], None),
+    ([empad2_toml(25.0), empad2_toml(19.0), empad2_toml(19.0)], ['', '18', ''], ['25.0', '19.0', '18'], [25.0, 18.0, 18.0], None),
+    # overrides can be changed back
+    ([empad2_toml(25.0)] * 3, ['24', '25', ''], ['25.0', '24', '25'], [24.0, 25.0, 25.0], None),
+    # accepting (or typing the shown default) writes the exact readout, other values are written as typed
+    ([empad2_toml(25.0117)], [''], ['25.0'], [25.0117], None),
+    ([empad2_toml(25.0117)], ['25.0'], ['25.0'], [25.0117], None),
+    ([empad2_toml(25.0117)], ['25'], ['25.0'], [25.0], None),
+    # readouts are keyed to 0.1 mrad
+    ([empad2_toml(25.04), empad2_toml(25.06)], ['24', ''], ['25.0', '25.1'], [24.0, 25.06], None),
+    # missing readout is its own key, starting from the config default
+    ([empad2_toml(25.0), empad2_toml(None), empad2_toml(25.0)], ['24', '', ''], ['25.0', '25.0', '24'], [24.0, 25.0, 24.0], None),
+    # zero is a real readout
+    ([empad2_toml(0.0)] * 2, ['', ''], ['0.0', '0.0'], [0.0, 0.0], None),
+    # EMPAD1 has no readout
+    ([empad1_xml()] * 3, ['', '', ''], ['25.0', '25.0', '25.0'], [25.0, 25.0, 25.0], None),
+    ([empad1_xml()] * 3, ['19', '', ''], ['25.0', '19', '19'], [19.0, 19.0, 19.0], None),
+    ([empad1_xml()] * 2, ['19', ''], ['21.4', '19'], [19.0, 19.0], 21.4),
+])
+def test_process_empad_conv_angle(tmp_path, monkeypatch, datasets, answers, offered, written, config_conv_angle):
+    from phaser.cli.process_empad import ProcessEmpadConfig
+
+    config = ProcessEmpadConfig(conv_angle=config_conv_angle) if config_conv_angle is not None else None
+    (actual_offered, actual_written) = process_datasets(
+        tmp_path, monkeypatch, datasets, {'Convergence angle': answers}, config
+    )
+    assert actual_offered['Convergence angle'] == offered
+    assert [m['conv_angle'] for m in actual_written] == pytest.approx(written)
+
+
+@pytest.mark.parametrize(('datasets', 'answers', 'offered', 'written'), [
+    # metadata is followed
+    ([empad2_toml(author='Alice')] * 3, ['', '', ''], ['Alice', 'Alice', 'Alice'], ['Alice', 'Alice', 'Alice']),
+    ([empad2_toml(author='Alice'), empad2_toml(author='Bob'), empad2_toml(author='Alice')], ['', '', ''],
+     ['Alice', 'Bob', 'Alice'], ['Alice', 'Bob', 'Alice']),
+    ([empad2_toml(author=''), empad2_toml(author='Alice')], ['', ''], [None, 'Alice'], [None, 'Alice']),
+    ([empad2_toml(author='Alice'), empad2_toml(author='')], ['', ''], ['Alice', None], ['Alice', None]),
+    # overrides stick to their metadata author only
+    ([empad2_toml(author='Alice')] * 3, ['Bob', '', ''], ['Alice', 'Bob', 'Bob'], ['Bob', 'Bob', 'Bob']),
+    ([empad2_toml(author='Alice'), empad2_toml(author='Bob')], ['Carol', ''], ['Alice', 'Bob'], ['Carol', 'Bob']),
+    ([empad2_toml(author=''), empad2_toml(author='Bob'), empad2_toml(author=''), empad2_toml(author='')],
+     ['Alice', 'Carol', '', ''], [None, 'Bob', 'Alice', 'Alice'], ['Alice', 'Carol', 'Alice', 'Alice']),
+    # EMPAD1 has no author
+    ([empad1_xml()], [''], [None], [None]),
+    ([empad1_xml()] * 3, ['Bob', '', ''], [None, 'Bob', 'Bob'], ['Bob', 'Bob', 'Bob']),
+])
+def test_process_empad_author(tmp_path, monkeypatch, datasets, answers, offered, written):
+    (actual_offered, actual_written) = process_datasets(tmp_path, monkeypatch, datasets, {'Author': answers})
+    assert actual_offered['Author'] == offered
+    assert [m.get('author') for m in actual_written] == written
+
+
 def test_read_pymultislicer_metadata():
     metadata = EmpadMetadata.from_json(INPUT_FILES_PATH / 'sim_metadata.json')
 
