@@ -224,6 +224,26 @@ def test_process_empad_author(tmp_path, monkeypatch, datasets, answers, offered,
     assert [m.get('author') for m in actual_written] == written
 
 
+@pytest.mark.parametrize(('prompt', 'key', 'answers', 'offered', 'written'), [
+    # scaled defaults are formatted, accepting them writes the exact value
+    ('Diffraction pixel spacing', 'diff_step', ['', ''], ['0.529', '0.529'], [0.52882, 0.52882]),
+    ('Single-electron intensity', 'adu', ['', ''], ['191', '191'], [190.95, 190.95]),
+    # entered values are offered as typed
+    ('Diffraction pixel spacing', 'diff_step', ['0.52882', ''], ['0.529', '0.52882'], [0.52882, 0.52882]),
+    ('Single-electron intensity', 'adu', ['190.5', ''], ['191', '190.5'], [190.5, 190.5]),
+])
+def test_process_empad_scaled_defaults(tmp_path, monkeypatch, prompt, key, answers, offered, written):
+    from phaser.cli.process_empad import ProcessEmpadConfig
+
+    # 300 kV, 0.5766 m camera length datasets, with defaults at 200 kV and twice the camera length
+    config = ProcessEmpadConfig(diff_step={300: (1.1532, 0.26441)}, adu=(200, 127.3))
+    (actual_offered, actual_written) = process_datasets(
+        tmp_path, monkeypatch, [empad2_toml()] * 2, {prompt: answers}, config
+    )
+    assert actual_offered[prompt] == offered
+    assert [m[key] for m in actual_written] == pytest.approx(written)
+
+
 def test_read_pymultislicer_metadata():
     metadata = EmpadMetadata.from_json(INPUT_FILES_PATH / 'sim_metadata.json')
 

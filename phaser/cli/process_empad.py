@@ -112,10 +112,10 @@ class FloatParam(Parameter[float]):
 
 @dataclass(init=False)
 class CameraParam(Parameter[float]):
-    """Maps f"{camera_length:.3f}" to diff_step values"""
-    used: t.Dict[t.Tuple[str, str], float] = field(default_factory=dict)
-    """Maps f"{voltage:.0f}" to default (camera_length, diff_step) tuple"""
+    used: t.Dict[t.Tuple[str, t.Optional[str]], t.Tuple[str, float]] = field(default_factory=dict)
+    """Maps (f"{voltage:.0f}", f"{camera_length:.3f}") to the (str, value) entered for it"""
     defaults: t.Dict[str, t.Tuple[float, float]]
+    """Maps f"{voltage:.0f}" to default (camera_length, diff_step) tuple"""
 
     def __init__(self, defaults: t.Dict[float, t.Tuple[float, float]]):
         self.name = 'Diffraction pixel spacing'
@@ -127,27 +127,27 @@ class CameraParam(Parameter[float]):
         if not console:
             console = default_console()
         camera_length = metadata.camera_length
-        camera_length_str = f"{camera_length:.3f}"
+        camera_length_str = f"{camera_length:.3f}" if camera_length is not None else None
         voltage_str = f"{metadata.voltage:.0f}"
         if camera_length is not None:
             console.print(f"Camera length: {camera_length * 1e3:.0f} mm")
 
-        default = self.used.get((voltage_str, camera_length_str), None) 
+        (default_str, default) = self.used.get((voltage_str, camera_length_str), ("", None))
         if default is None and camera_length is not None and (t := self.defaults.get(voltage_str)) is not None:
             (default_camera_length, default_val) = t
             # diff_step scales inversely with camera length
             default = default_val * default_camera_length / camera_length
+            default_str = f"{default:.03f}"
 
-        default_str = f"{default:.03f}" if default is not None else ""
         (val_str, val) = prompt_ask(self.name, "mrad/px", default, default_str, console)
-        self.used[(voltage_str, camera_length_str)] = val
+        self.used[(voltage_str, camera_length_str)] = (val_str, val)
         return val
 
 
 @dataclass(init=False)
 class AduParam(Parameter[float]):
-    """Maps f"{voltage:.0f}" to ADU values"""
-    used: t.Dict[str, float]
+    """Maps f"{voltage:.0f}" to the (str, value) entered for it"""
+    used: t.Dict[str, t.Tuple[str, float]]
     """Voltage associated with default_val (V)"""
     default_voltage: t.Optional[float]
 
@@ -160,14 +160,14 @@ class AduParam(Parameter[float]):
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> float:
         voltage = metadata.voltage
         voltage_str = f"{voltage:.0f}"
-        default = self.used.get(voltage_str, None) 
+        (default_str, default) = self.used.get(voltage_str, ("", None))
         if default is None and self.default_val is not None and self.default_voltage is not None:
             # ADU should scale linearly with voltage
             default = self.default_val * voltage / self.default_voltage
-        default_str = f"{default:.0f}" if default is not None else ""
+            default_str = f"{default:.0f}"
 
         (val_str, val) = prompt_ask(self.name, "ADU", default, default_str, console)
-        self.used[voltage_str] = val
+        self.used[voltage_str] = (val_str, val)
         return val
 
 
