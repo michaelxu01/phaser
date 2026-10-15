@@ -182,21 +182,27 @@ class AduParam(Parameter[float]):
 
 @dataclass
 class ConvAngleParam(FloatParam):
+    entered: bool = False
+    """Whether a value has been entered"""
+
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> float:
-        if metadata.conv_angle is not None:
-            # prefer value read from the microscope
+        if not self.entered and metadata.conv_angle is not None:
+            # prefer value read from the microscope, until one has been entered
             self.default_val = metadata.conv_angle
             self.default_str = f"{metadata.conv_angle:.2f}"
+        self.entered = True
         return super().ask(metadata, console)
 
 
 @dataclass
 class AuthorParam(OptStringParam):
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> t.Optional[str]:
-        if metadata.author is not None:
-            self.default_val = metadata.author
-        return super().ask(metadata, console)
-
+        default_val = self.default_val if self.default_val is not None else metadata.author
+        val = Prompt.ask(self.name, default=default_val, console=console)
+        if val is not None:
+            self.default_val = val
+        return val
+        
 
 def make_params(config: ProcessEmpadConfig) -> t.Sequence[t.Tuple[str, Parameter]]:
     return [
