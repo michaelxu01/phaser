@@ -24,20 +24,6 @@ from phaser.cli.utils import natural_key
 T = t.TypeVar('T')
 
 
-class Empad2Config(pane.PaneBase):
-    diff_step: t.Dict[float, t.Tuple[float, float]] = {}
-    """Diffraction pixel size calibration, kV: [camera_length, diff_step]"""
-
-    adu: t.Optional[t.Tuple[float, float]] = None
-    """ADU (single electron intensity) calibration, [kV, adu]"""
-
-    det_flips: t.Tuple[bool, bool, bool] = (False, False, False)
-    """Detector flips (flip_y, flip_x, transpose). Set and forget"""
-
-    det_rotation: float = 0.0
-    """Detector rotation relative to scan axes (degrees)."""
-
-
 class ProcessEmpadConfig(pane.PaneBase):
     diff_step: t.Dict[float, t.Tuple[float, float]] = {}
     """
@@ -55,11 +41,8 @@ class ProcessEmpadConfig(pane.PaneBase):
     Give a tuple of `[kV, adu]`. Other kVs assume linear scaling.
     """
 
-    det_flips: t.Tuple[bool, bool, bool] = (True, False, False)
+    det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
     """Detector flips (flip_y, flip_x, transpose). Set and forget"""
-
-    empad_version: int = 1
-    """Empad version of XML metadata. TOML metadata is always version 2."""
 
     det_rotation: float = 0.0
     """Detector rotation relative to scan axes (degrees)."""
@@ -69,9 +52,6 @@ class ProcessEmpadConfig(pane.PaneBase):
 
     conv_angle: float = 25.0
     """Default convergence angle (mrad). Used only if missing from metadata."""
-
-    empad2: Empad2Config = Empad2Config()
-    """Detector calibrations used for EMPAD2 TOML metadata, in place of those above."""
 
 
 CONFIG: Config[ProcessEmpadConfig] = Config('process_empad', ProcessEmpadConfig)
@@ -218,22 +198,20 @@ class AuthorParam(OptStringParam):
         return super().ask(metadata, console)
 
 
-def make_params(config: ProcessEmpadConfig, empad2: bool = False) -> t.Sequence[t.Tuple[str, Parameter]]:
-    calib = config.empad2 if empad2 else config
+def make_params(config: ProcessEmpadConfig) -> t.Sequence[t.Tuple[str, Parameter]]:
     return [
         ('defocus', FloatParam("Defocus (CW is +)", 0.0, "nm", "0.0", 1e-9)), # nm to m
         ('conv_angle', ConvAngleParam("Convergence angle", config.conv_angle, "mrad", f"{config.conv_angle:.1f}")),
         ('beam_current', FloatParam("Approx. probe current", config.probe_current, "pA", f"{config.probe_current:.1f}", 1e-12)),  # pA to A
-        ('diff_step', CameraParam(calib.diff_step)),
-        ('adu', AduParam(calib.adu[1], calib.adu[0] * 1e3) if calib.adu is not None else AduParam()),
+        ('diff_step', CameraParam(config.diff_step)),
+        ('adu', AduParam(config.adu[1], config.adu[0] * 1e3) if config.adu is not None else AduParam()),
         ('author', AuthorParam("Author", None)),
     ]
 
 
 def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
-                params: t.Mapping[bool, t.Sequence[t.Tuple[str, Parameter]]],
+                params: t.Sequence[t.Tuple[str, Parameter]],
                 console: Console, prompt: bool = True):
-    """`params` maps whether a dataset is EMPAD2 (TOML metadata) to the parameters to prompt for."""
     n_proc = 0
     path = Path(path)
 
@@ -270,17 +248,17 @@ def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
         if not (raw_dir / metadata.raw_filename).exists():
             console.print(f"[warning]Couldn't find raw data '{metadata.raw_filename}' in '{raw_dir}'.")
 
-        calib = config.empad2 if empad2 else config
-        if not empad2:
-            metadata.empad_version = config.empad_version
-        metadata.det_rotation = calib.det_rotation
-        metadata.det_flips = calib.det_flips
+        metadata.det_rotation = config.det_rotation
+        # typical orientation on v1 and v2
+        metadata.det_flips = config.det_flips or (
+            (True, False, False) if metadata.empad_version == 1 else (False, False, False)
+        )
 
         if prompt:
             if metadata.notes is not None:
                 console.print(f"Notes: {metadata.notes}", markup=False)
 
-            for (k, param) in params[empad2]:
+            for (k, param) in params:
                 val = param.ask(metadata, console)
                 setattr(metadata, k, val)
 
@@ -297,22 +275,31 @@ def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
 @click.command()
 @click.option('--watch/--no-watch', default=False, help="Watch folder for changes (Linux only)")
 @click.option('--prompt/--no-prompt', default=True, help="Prompt for additional metadata.")
+@click.option('--config', 'config_name', type=str, default=None,
+              help="Named config to use, stored in 'process_empad_{name}.yaml'")
 @click.option('--make-config', is_flag=True, default=False, help="Make config file and exit")
 @click.argument('folder', type=click.Path(exists=True, file_okay=False), required=False)
 def process_empad(
     folder: t.Union[str, Path, None],
     watch: bool = False,
     prompt: bool = True,
+    config_name: t.Optional[str] = None,
     make_config: bool = False,
 ):
     """
     Process EMPAD XML/TOML metadata for all the datasets contained in FOLDER.
 
     Datasets with a 'metadata.toml' file are processed as EMPAD2. Otherwise,
-    XML metadata is used.
+    XML metadata is used, and processed as EMPAD1.
     """
     console = default_console()
     config = CONFIG
+    if config_name is not None:
+        try:
+            config = config.variant(config_name)
+        except ValueError as e:
+            console.print(f"[error]{e}")
+            raise Exit(1)
 
     if make_config:
         if not config.write_default():
@@ -322,8 +309,15 @@ def process_empad(
         console.print("Wrote config file!")
         return
 
+    if config.path().exists():
+        console.print(f"Using config '{config.path()}'")
+    elif config_name is not None:
+        console.print(f"[error]Config '{config_name}' does not exist at '{config.path()}'."
+                      " Create it with '--make-config'.")
+        raise Exit(1)
+
     config = config.get()
-    params = {False: make_params(config), True: make_params(config, empad2=True)}
+    params = make_params(config)
 
     if folder is None:
         folder = Path('.')

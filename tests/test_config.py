@@ -99,3 +99,21 @@ def test_get_missing_and_invalid(config_dir):
     config.path().write_text('---\nscale: 1.\n---\nscale: 2.\n')
     with pytest.raises(ValueError, match='multiple YAML documents'):
         config.get()
+
+
+def test_variants(config_dir):
+    config = Config('test', ExampleConfig, example=EXAMPLE)
+    variant = config.variant('detector-2_b')
+    assert variant.path() == config_dir / 'test_detector-2_b.yaml'
+    assert variant.ty is ExampleConfig and variant.example is EXAMPLE
+    assert config.variants() == []
+
+    assert variant.write_default()
+    config.variant('a').path().write_text('scale: 3.\n')
+    assert config.variants() == ['a', 'detector-2_b']
+    assert config.variant('a').get() == ExampleConfig(scale=3.)
+    assert config.get() == ExampleConfig()  # base config is unaffected
+
+    for name in ('', '../escape', 'with space', 'a.b'):
+        with pytest.raises(ValueError, match="Invalid config name"):
+            config.variant(name)

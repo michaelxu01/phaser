@@ -73,7 +73,10 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         logging.warning("Assuming empad v1. Specify 'empad_version' in metadata or hook to supress this warning.")
         empad_version = 1
 
-    logging.info(f"Loading with detector flips: {list(map(int, det_flips or (True, False, False)))} [y, x, transpose]")
+    if not det_flips:
+        # typical orientation on v1 and v2
+        det_flips = (True, False, False) if empad_version == 1 else (False, False, False)
+    logging.info(f"Loading with detector flips: {list(map(int, det_flips))} [y, x, transpose]")
     patterns = numpy.fft.ifftshift(
         load_4d(path, scan_shape, memmap=True, flips=det_flips, empad_version=empad_version),
         axes=(-1, -2)

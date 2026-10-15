@@ -188,6 +188,7 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
         return EmpadMetadata(
             name=root.attrib['name'],
+            empad_version=1,
             orig_path=orig_path,
             raw_filename=raw_filename,
             time=timestamp.attrib['isoformat'],

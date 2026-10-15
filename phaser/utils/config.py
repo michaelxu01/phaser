@@ -5,6 +5,7 @@ Utilities for configuration
 from pathlib import Path
 import functools
 import logging
+import re
 import textwrap
 import typing as t
 
@@ -138,6 +139,18 @@ class Config(t.Generic[PaneClassT]):
 
     def path(self) -> Path:
         return get_config_dir() / f'{self.config_name}.yaml'
+
+    def variant(self, name: str) -> 'Config[PaneClassT]':
+        """Named variant of this configuration, stored in '{config_name}_{name}.yaml'"""
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', name):
+            raise ValueError(f"Invalid config name '{name}'. Use only letters, digits, '-' and '_'.")
+        return Config(f'{self.config_name}_{name}', self.ty, self.example)
+
+    def variants(self) -> t.List[str]:
+        """Names of the existing variants of this configuration"""
+        prefix = f'{self.config_name}_'
+        names = (path.stem[len(prefix):] for path in get_config_dir().glob(f'{prefix}*.yaml'))
+        return sorted(name for name in names if re.fullmatch(r'[A-Za-z0-9_-]+', name))
 
     def default(self) -> PaneClassT:
         try:
