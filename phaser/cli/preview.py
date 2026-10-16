@@ -189,11 +189,12 @@ def preview_dir(meta_path: Path) -> Path:
     return meta_path.parent / 'previews'
 
 
+## TODO: standardize/unify metadata so CLI utilities can be extended to other dataset types. For now, only empad and pyMultislicer metadata are supported.
 LOADERS: t.Dict[str, str] = {
     'empad_metadata': 'empad',
     'pyMultislicer_metadata': 'empad',
-    'gatan_file': 'gatan',
-    'nion_metadata': 'nion',
+    # 'gatan_file': 'gatan', 
+    # 'nion_metadata': 'nion',
 }
 """Maps metadata `file_type` to the raw data hook used to load it"""
 
