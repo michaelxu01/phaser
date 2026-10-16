@@ -13,12 +13,11 @@ import click
 from click.exceptions import Exit
 import pane
 from rich.prompt import Prompt
-from rich.theme import Theme
 from rich.console import Console
 
 from phaser.io.empad import EmpadMetadata, UnscannedDataset
 from phaser.utils.config import Config
-from phaser.cli.utils import natural_key
+from phaser.cli.utils import CONSOLE_THEME, natural_key
 
 
 T = t.TypeVar('T')
@@ -58,12 +57,7 @@ CONFIG: Config[ProcessEmpadConfig] = Config('process_empad', ProcessEmpadConfig)
 
 
 def default_console() -> Console:
-    console = Console(theme=Theme({
-        'warning': 'bold yellow',
-        'error': 'bold red',
-        'info': 'blue',
-        'prompt.invalid': 'bold red',
-    }))
+    console = Console(theme=CONSOLE_THEME)
     logging.basicConfig(
         level=logging.INFO, format="%(message)s", datefmt="[%X]",
         handlers=[RichHandler(logging.INFO, console=console, enable_link_path=False)]
